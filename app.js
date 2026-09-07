@@ -54,6 +54,7 @@ function setMode(mode) {
   editMode = mode;
   isSelectMode = (mode === "select");
   dragMode = null;
+  cancelLongPress();
   clearSelection();
   updateModeButton();
   draw();
@@ -372,6 +373,7 @@ function drawHandles(r) {
 --------------------------------------------------------- */
 const PAD = 6;
 const MIN_FONT = 9;
+const MAX_FONT = 120; // 四角が大きい場合でも際限なく巨大化しないための上限
 
 function splitParagraphs(text) {
   return text.split("\n");
@@ -428,7 +430,7 @@ function layoutVertical(text, w, h, maxFont) {
 
 function drawText(r) {
   const isHorizontal = r.w >= r.h; // 正方形・横長 -> 横書き / 縦長 -> 縦書き
-  const maxFont = Math.max(MIN_FONT, Math.min(24, Math.floor(Math.min(r.w, r.h) / 3)));
+  const maxFont = Math.max(MIN_FONT, Math.min(MAX_FONT, Math.floor(Math.min(r.w, r.h) / 3)));
 
   ctx.fillStyle = "#1a1a1a";
   ctx.textBaseline = "middle";
@@ -540,6 +542,7 @@ function onPointerDown(e) {
   if (pointers.size === 1) {
     startSingleDrag(e.clientX, e.clientY);
   } else if (pointers.size === 2) {
+    cancelLongPress();
     startTwoFingerGesture();
   }
 }
@@ -554,6 +557,12 @@ function startSingleDrag(x, y) {
 
   const hit = hitTest(x, y);
   const now = Date.now();
+
+  if (hit.type === "move") {
+    startLongPress(hit.rect, x, y);
+  } else {
+    cancelLongPress();
+  }
 
   if (isSelectMode) {
     if (hit.type === "create") {
@@ -576,6 +585,7 @@ function startSingleDrag(x, y) {
         Math.hypot(lastTap.x - x, lastTap.y - y) < 32) {
       lastTap = null;
       dragMode = null;
+      cancelLongPress();
       selectOnly(hit.rect.id);
       draw();
       openTextEditor(hit.rect);
@@ -668,6 +678,11 @@ function startTwoFingerGesture() {
 function onPointerMove(e) {
   if (!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (longPressTimer && longPressStart &&
+      Math.hypot(e.clientX - longPressStart.x, e.clientY - longPressStart.y) > LONG_PRESS_MOVE_THRESH) {
+    cancelLongPress();
+  }
 
   if (dragMode === "pan") {
     state.offsetX = dragData.startOffsetX + (e.clientX - dragData.startScreenX);
@@ -821,6 +836,7 @@ function drawCreatePreview() {
 function onPointerUp(e) {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
+  cancelLongPress();
 
   if (dragMode === "create") {
     const { startX, startY, curX, curY } = dragData;
@@ -896,7 +912,8 @@ let editingRectId = null;
 function isOverlayOpen() {
   return !textOverlay.classList.contains("hidden") ||
          !document.getElementById("save-menu").classList.contains("hidden") ||
-         !document.getElementById("settings-panel").classList.contains("hidden");
+         !document.getElementById("settings-panel").classList.contains("hidden") ||
+         !rectContextMenu.classList.contains("hidden");
 }
 
 function openTextEditor(rect) {
@@ -925,6 +942,107 @@ document.getElementById("text-edit-delete").addEventListener("click", () => {
   selection.delete(editingRectId);
   closeTextEditor();
   draw();
+});
+
+/* ---------------------------------------------------------
+   四角の右クリック/長押しメニュー
+   (右へ回転 / 左へ回転 / 最前面に移動 / 最背面に移動)
+--------------------------------------------------------- */
+const rectContextMenu = document.getElementById("rect-context-menu");
+let contextMenuRectId = null;
+
+function openRectContextMenu(rect, screenX, screenY) {
+  contextMenuRectId = rect.id;
+  rectContextMenu.classList.remove("hidden");
+  const margin = 8;
+  const menuRect = rectContextMenu.getBoundingClientRect();
+  let left = Math.min(screenX, window.innerWidth - menuRect.width - margin);
+  let top = Math.min(screenY, window.innerHeight - menuRect.height - margin);
+  left = Math.max(margin, left);
+  top = Math.max(margin, top);
+  rectContextMenu.style.left = left + "px";
+  rectContextMenu.style.top = top + "px";
+}
+function closeRectContextMenu() {
+  rectContextMenu.classList.add("hidden");
+  contextMenuRectId = null;
+}
+
+document.getElementById("ctx-rotate-right").addEventListener("click", () => {
+  const r = getRect(contextMenuRectId);
+  if (r) {
+    pushHistory();
+    r.rotation = ((r.rotation + 90) % 360 + 360) % 360;
+    draw();
+  }
+  closeRectContextMenu();
+});
+document.getElementById("ctx-rotate-left").addEventListener("click", () => {
+  const r = getRect(contextMenuRectId);
+  if (r) {
+    pushHistory();
+    r.rotation = ((r.rotation - 90) % 360 + 360) % 360;
+    draw();
+  }
+  closeRectContextMenu();
+});
+document.getElementById("ctx-bring-front").addEventListener("click", () => {
+  const idx = state.rects.findIndex(r => r.id === contextMenuRectId);
+  if (idx !== -1) {
+    pushHistory();
+    const [r] = state.rects.splice(idx, 1);
+    state.rects.push(r);
+    draw();
+  }
+  closeRectContextMenu();
+});
+document.getElementById("ctx-send-back").addEventListener("click", () => {
+  const idx = state.rects.findIndex(r => r.id === contextMenuRectId);
+  if (idx !== -1) {
+    pushHistory();
+    const [r] = state.rects.splice(idx, 1);
+    state.rects.unshift(r);
+    draw();
+  }
+  closeRectContextMenu();
+});
+
+// 長押し検出(タッチ/ペン想定。マウスは contextmenu イベント側で処理)
+let longPressTimer = null;
+let longPressStart = null; // {x,y,rect}
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_MOVE_THRESH = 10;
+
+function startLongPress(rect, x, y) {
+  cancelLongPress();
+  longPressStart = { x, y };
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    longPressStart = null;
+    dragMode = null;
+    selectOnly(rect.id);
+    draw();
+    if (navigator.vibrate) navigator.vibrate(12);
+    openRectContextMenu(rect, x, y);
+  }, LONG_PRESS_MS);
+}
+function cancelLongPress() {
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  longPressStart = null;
+}
+
+// 右クリック(デスクトップ)での同メニュー表示
+canvas.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  if (isOverlayOpen()) return;
+  cancelLongPress();
+  const hit = hitTest(e.clientX, e.clientY);
+  if (hit.type === "move") {
+    dragMode = null;
+    selectOnly(hit.rect.id);
+    draw();
+    openRectContextMenu(hit.rect, e.clientX, e.clientY);
+  }
 });
 
 /* ---------------------------------------------------------
@@ -1105,7 +1223,7 @@ function drawTextOn(targetCtx, r) {
   // 一時的にレイアウト計算用ctxを差し替え(measureTextのため)
   const globalCtxBackup = window.__measureCtx;
   const isHorizontal = r.w >= r.h;
-  const maxFont = Math.max(MIN_FONT, Math.min(24, Math.floor(Math.min(r.w, r.h) / 3)));
+  const maxFont = Math.max(MIN_FONT, Math.min(MAX_FONT, Math.floor(Math.min(r.w, r.h) / 3)));
   targetCtx.fillStyle = "#1a1a1a";
   targetCtx.textBaseline = "middle";
   if (isHorizontal) {

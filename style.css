@@ -117,6 +117,20 @@ html, body {
   margin-top: 4px;
 }
 
+.context-menu {
+  left: 0;
+  top: 0;
+  transform: none;
+  width: min(220px, 70vw);
+  padding: 8px;
+}
+.context-menu .popup-btn {
+  margin-bottom: 6px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+}
+.context-menu .popup-close { margin-top: 2px; }
+
 .field { display: block; font-size: 13px; color: #444; margin-bottom: 14px; }
 .field-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .field-row input[type=range] { flex: 1; }
