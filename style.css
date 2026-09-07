@@ -38,6 +38,8 @@ html, body {
 .tbtn svg { width: 22px; height: 22px; stroke: #fff; fill: #fff; }
 .tbtn:active { background: rgba(60,60,60,0.9); }
 .tbtn.active { background: #2b6cf6; }
+.tbtn:disabled { opacity: 0.35; }
+.tbtn:disabled:active { background: rgba(30,30,30,0.86); }
 
 #toolbar-tl { flex-wrap: wrap; max-width: calc(100vw - 20px); }
 

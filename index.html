@@ -23,6 +23,15 @@
     <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
   </button>
   <input type="file" id="file-input" accept="application/json" hidden>
+  <button id="btn-undo" class="tbtn" title="元に戻す" disabled>
+    <svg viewBox="0 0 24 24"><path d="M7 7H15a5 5 0 0 1 0 10h-3" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 3 5 7l5 4" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button id="btn-redo" class="tbtn" title="やり直す" disabled>
+    <svg viewBox="0 0 24 24"><path d="M17 7H9a5 5 0 0 0 0 10h3" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 3l5 4-5 4" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button id="btn-select-all" class="tbtn" title="全選択">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke-width="1.7"/><path d="M8 12l3 3 5-6" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
   <button id="btn-delete" class="tbtn" title="削除">
     <svg viewBox="0 0 24 24"><path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 11v6M14 11v6" fill="none" stroke-width="1.7" stroke-linecap="round"/></svg>
   </button>
