@@ -1,4 +1,4 @@
-const CACHE_NAME = "storemap-cache-v1";
+const CACHE_NAME = "storemap-cache-v2";
 const ASSETS = [
   "./",
   "./index.html",

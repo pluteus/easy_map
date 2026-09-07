@@ -107,6 +107,8 @@ function draw() {
   ctx.scale(state.scale, state.scale);
   for (const r of state.rects) drawRect(r);
   ctx.restore();
+
+  scheduleAutosave();
 }
 
 function drawGrid() {
@@ -979,12 +981,69 @@ function fitView() {
 }
 
 /* ---------------------------------------------------------
+   自動保存(再起動時に編集内容を復元)
+--------------------------------------------------------- */
+const STORAGE_KEY = "storemap-autosave-v1";
+let autosaveTimer = null;
+
+function scheduleAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(saveToLocalStorage, 400);
+}
+
+function saveToLocalStorage() {
+  try {
+    const data = {
+      version: 1,
+      gridSize: state.gridSize,
+      rects: state.rects,
+      nextId: state.nextId,
+      scale: state.scale,
+      offsetX: state.offsetX,
+      offsetY: state.offsetY,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (err) { /* 保存先が使えない場合は無視 */ }
+}
+
+function loadFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data.rects)) return false;
+    state.rects = data.rects;
+    state.gridSize = data.gridSize || state.gridSize;
+    const maxId = data.rects.reduce((m, r) => Math.max(m, r.id || 0), 0);
+    state.nextId = Math.max(data.nextId || 1, maxId + 1);
+    if (typeof data.scale === "number") state.scale = data.scale;
+    if (typeof data.offsetX === "number") state.offsetX = data.offsetX;
+    if (typeof data.offsetY === "number") state.offsetY = data.offsetY;
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+// アプリが閉じられる/バックグラウンドに回る瞬間に確実に保存する
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveToLocalStorage();
+});
+window.addEventListener("pagehide", saveToLocalStorage);
+window.addEventListener("beforeunload", saveToLocalStorage);
+
+/* ---------------------------------------------------------
    初期化
 --------------------------------------------------------- */
 function init() {
+  const restored = loadFromLocalStorage();
   resizeCanvas();
   syncGridUI();
-  showHint("キャンバスをスワイプして四角を配置", 2400);
+  if (restored && state.rects.length) {
+    showHint("前回の編集内容を復元しました", 2000);
+  } else {
+    showHint("キャンバスをスワイプして四角を配置", 2400);
+  }
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
