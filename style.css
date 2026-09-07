@@ -21,6 +21,7 @@ html, body {
   display: flex;
   gap: 8px;
   z-index: 20;
+  /* Fallback; JS sets a precise value per toolbar so tl/tr never overlap */
   max-width: calc(100vw - 20px);
   overflow-x: auto;
   overflow-y: hidden;
@@ -29,10 +30,16 @@ html, body {
   scrollbar-width: none;
   -ms-overflow-style: none;
   padding: 5px;
+  /* Fade the edges so it's visually obvious the row can scroll */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
 }
 .toolbar::-webkit-scrollbar { display: none; }
 #toolbar-tl { left: max(10px, env(safe-area-inset-left)); }
 #toolbar-tr { right: max(10px, env(safe-area-inset-right)); }
+#toolbar-tl.no-fade-l { -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 14px), transparent 100%); mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 14px), transparent 100%); }
+#toolbar-tl.no-fade-r { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 100%); mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 100%); }
+#toolbar-tl.no-fade-l.no-fade-r { -webkit-mask-image: none; mask-image: none; }
 
 .tbtn {
   width: 44px; height: 44px;

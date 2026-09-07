@@ -226,6 +226,40 @@ window.addEventListener("resize", resizeCanvas);
 window.addEventListener("orientationchange", () => setTimeout(resizeCanvas, 200));
 
 /* ---------------------------------------------------------
+   ツールバーのレイアウト調整
+   左ツールバー(toolbar-tl)が右ツールバー(toolbar-tr)と重ならないよう、
+   利用可能な幅を実測して割り当て、収まらない分はスクロールで
+   アクセスできるようにする。
+--------------------------------------------------------- */
+const toolbarTl = document.getElementById("toolbar-tl");
+const toolbarTr = document.getElementById("toolbar-tr");
+
+function layoutToolbars() {
+  if (!toolbarTl || !toolbarTr) return;
+  const GAP = 12; // tl と tr の間に確保する最小余白
+  const trWidth = toolbarTr.getBoundingClientRect().width;
+  const tlLeft = toolbarTl.getBoundingClientRect().left;
+  const available = window.innerWidth - tlLeft - trWidth - GAP;
+  // 最低でもボタン1個分強は確保し、崩れないようにする
+  toolbarTl.style.maxWidth = Math.max(56, available) + "px";
+  updateToolbarFade();
+}
+
+function updateToolbarFade() {
+  if (!toolbarTl) return;
+  const atStart = toolbarTl.scrollLeft <= 1;
+  const atEnd = toolbarTl.scrollLeft + toolbarTl.clientWidth >= toolbarTl.scrollWidth - 1;
+  toolbarTl.classList.toggle("no-fade-l", atStart);
+  toolbarTl.classList.toggle("no-fade-r", atEnd);
+}
+
+if (toolbarTl) {
+  toolbarTl.addEventListener("scroll", updateToolbarFade, { passive: true });
+}
+window.addEventListener("resize", layoutToolbars);
+window.addEventListener("orientationchange", () => setTimeout(layoutToolbars, 200));
+
+/* ---------------------------------------------------------
    描画
 --------------------------------------------------------- */
 function draw() {
@@ -1248,6 +1282,7 @@ window.addEventListener("beforeunload", saveToLocalStorage);
 function init() {
   const restored = loadFromLocalStorage();
   resizeCanvas();
+  layoutToolbars();
   syncGridUI();
   updateUndoRedoButtons();
   updateModeButton();
