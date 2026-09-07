@@ -1,0 +1,15 @@
+{
+  "name": "店内マップエディタ",
+  "short_name": "店内マップ",
+  "description": "グリッドに沿って四角を配置し、店内の簡易マップを作成できるツールです。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#1e1e1e",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

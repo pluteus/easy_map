@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>店内マップエディタ</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1e1e1e">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<div id="toolbar-tl" class="toolbar">
+  <button id="btn-save" class="tbtn" title="保存">
+    <svg viewBox="0 0 24 24"><path d="M5 3h11l5 5v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M8 3v6h8V3M8 21v-7h8v7" fill="none" stroke-width="1.6"/></svg>
+  </button>
+  <button id="btn-load" class="tbtn" title="読み込み">
+    <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+  </button>
+  <input type="file" id="file-input" accept="application/json" hidden>
+</div>
+
+<div id="toolbar-tr" class="toolbar">
+  <button id="btn-settings" class="tbtn" title="設定">
+    <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7z" fill="none" stroke-width="1.6"/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.7 7.7 0 0 0-1.7-1L15 3h-4l-.3 2.6a7.7 7.7 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.7 7.7 0 0 0 1.7 1L11 21h4l.3-2.6a7.7 7.7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6z" fill="none" stroke-width="1.6"/></svg>
+  </button>
+  <button id="btn-fullscreen" class="tbtn" title="フルスクリーン">
+    <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke-width="1.8"/></svg>
+  </button>
+</div>
+
+<div id="zoom-indicator" class="hidden"></div>
+
+<!-- 保存メニュー -->
+<div id="save-menu" class="popup hidden">
+  <div class="popup-title">保存形式を選択</div>
+  <button id="save-png" class="popup-btn">画像として保存 (PNG)</button>
+  <button id="save-json" class="popup-btn">データとして保存 (JSON)</button>
+  <button class="popup-close" data-close="save-menu">閉じる</button>
+</div>
+
+<!-- 設定パネル -->
+<div id="settings-panel" class="popup hidden">
+  <div class="popup-title">設定</div>
+  <label class="field">
+    グリッド間隔
+    <div class="field-row">
+      <input type="range" id="grid-size-range" min="12" max="80" step="1">
+      <span id="grid-size-value"></span>
+    </div>
+  </label>
+  <button id="settings-clear" class="popup-btn danger">キャンバスを全消去</button>
+  <button class="popup-close" data-close="settings-panel">閉じる</button>
+</div>
+
+<!-- テキスト編集オーバーレイ -->
+<div id="text-edit-overlay" class="hidden">
+  <div class="text-edit-box">
+    <div class="popup-title">テキストを入力</div>
+    <textarea id="text-edit-input" placeholder="例）レジ、バックヤード…"></textarea>
+    <div class="text-edit-buttons">
+      <button id="text-edit-delete" class="popup-btn danger">この四角を削除</button>
+      <div class="spacer"></div>
+      <button id="text-edit-cancel" class="popup-btn">キャンセル</button>
+      <button id="text-edit-ok" class="popup-btn primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<div id="hint" class="hint"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
