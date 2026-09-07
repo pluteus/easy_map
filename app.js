@@ -18,7 +18,53 @@ const state = {
 };
 
 let selection = new Set();   // 選択中の四角のID集合(通常モードでも0〜1個で利用)
-let isSelectMode = false;    // 範囲選択モード
+
+/* ---------------------------------------------------------
+   編集モード (hand / pencil / select)
+--------------------------------------------------------- */
+const MODE_ORDER = ["hand", "pencil", "select"];
+let editMode = "pencil";
+let isSelectMode = false;    // editMode === "select" と同期させておく(既存コード互換用)
+
+const MODE_ICONS = {
+  hand: `<svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l3 3" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  pencil: `<svg viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19l-4 1z" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 7l3 3" fill="none" stroke-width="1.6"/></svg>`,
+  select: `<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke-width="1.7" stroke-dasharray="3 2.4"/><circle cx="4" cy="4" r="1.6" fill="#fff" stroke="none"/><circle cx="20" cy="4" r="1.6" fill="#fff" stroke="none"/><circle cx="4" cy="20" r="1.6" fill="#fff" stroke="none"/><circle cx="20" cy="20" r="1.6" fill="#fff" stroke="none"/></svg>`,
+};
+const MODE_TITLES = {
+  hand: "ハンドモード(タップで切替)",
+  pencil: "ペンシルモード(タップで切替)",
+  select: "範囲選択モード(タップで切替)",
+};
+const MODE_HINTS = {
+  hand: "ハンドモード:1本指でキャンバスを移動できます",
+  pencil: "ペンシルモード:1本指のスワイプで四角を作成できます",
+  select: "範囲選択モード:ドラッグで範囲選択、四角をタップで選択/解除",
+};
+
+function updateModeButton() {
+  const btn = document.getElementById("btn-mode");
+  if (!btn) return;
+  btn.innerHTML = MODE_ICONS[editMode];
+  btn.title = MODE_TITLES[editMode];
+  btn.classList.toggle("active", editMode !== "pencil");
+}
+
+function setMode(mode) {
+  editMode = mode;
+  isSelectMode = (mode === "select");
+  dragMode = null;
+  clearSelection();
+  updateModeButton();
+  draw();
+}
+
+function cycleMode() {
+  const idx = MODE_ORDER.indexOf(editMode);
+  const next = MODE_ORDER[(idx + 1) % MODE_ORDER.length];
+  setMode(next);
+  showHint(MODE_HINTS[next], 2400);
+}
 
 function selectOnly(id) { selection = new Set(id == null ? [] : [id]); }
 function clearSelection() { selection = new Set(); }
@@ -465,6 +511,13 @@ function onPointerDown(e) {
 }
 
 function startSingleDrag(x, y) {
+  if (editMode === "hand") {
+    dragMode = "pan";
+    dragData = { startScreenX: x, startScreenY: y, startOffsetX: state.offsetX, startOffsetY: state.offsetY };
+    draw();
+    return;
+  }
+
   const hit = hitTest(x, y);
   const now = Date.now();
 
@@ -525,9 +578,29 @@ function startSingleDrag(x, y) {
   draw();
 }
 
+function startPinch(pA, pB) {
+  const dist = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+  const mid = { x: (pA.x + pB.x) / 2, y: (pA.y + pB.y) / 2 };
+  dragMode = "pinch";
+  dragData = {
+    startDist: dist,
+    startScale: state.scale,
+    startOffsetX: state.offsetX,
+    startOffsetY: state.offsetY,
+    midWorld: screenToWorld(mid.x, mid.y),
+  };
+  draw();
+}
+
 function startTwoFingerGesture() {
   const pts = [...pointers.values()];
   const [pA, pB] = pts;
+
+  // ハンドモードでは2本指は常にピンチズーム専用
+  if (editMode === "hand") {
+    startPinch(pA, pB);
+    return;
+  }
 
   // 範囲選択モード中に、選択中の四角を囲む破線四角の内側で2本指ツイスト
   // →選択グループ全体を、破線四角の中心を軸に回転
@@ -552,26 +625,21 @@ function startTwoFingerGesture() {
     pushHistory();
     dragMode = "rotate";
     dragData = { rects: [rect], baseAngle: ang };
+    draw();
   } else {
-    const dist = Math.hypot(pB.x - pA.x, pB.y - pA.y);
-    const mid = { x: (pA.x + pB.x) / 2, y: (pA.y + pB.y) / 2 };
-    dragMode = "pinch";
-    dragData = {
-      startDist: dist,
-      startScale: state.scale,
-      startOffsetX: state.offsetX,
-      startOffsetY: state.offsetY,
-      midWorld: screenToWorld(mid.x, mid.y),
-    };
+    startPinch(pA, pB);
   }
-  draw();
 }
 
 function onPointerMove(e) {
   if (!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-  if (dragMode === "create") {
+  if (dragMode === "pan") {
+    state.offsetX = dragData.startOffsetX + (e.clientX - dragData.startScreenX);
+    state.offsetY = dragData.startOffsetY + (e.clientY - dragData.startScreenY);
+    draw();
+  } else if (dragMode === "create") {
     const w = screenToWorld(e.clientX, e.clientY);
     const g = state.gridSize;
     dragData.curX = snap(w.x, g);
@@ -826,7 +894,7 @@ document.getElementById("text-edit-delete").addEventListener("click", () => {
 });
 
 /* ---------------------------------------------------------
-   削除ボタン・範囲選択ボタン
+   削除ボタン・モード切り替えボタン
 --------------------------------------------------------- */
 document.getElementById("btn-delete").addEventListener("click", () => {
   if (selection.size === 0) {
@@ -839,17 +907,7 @@ document.getElementById("btn-delete").addEventListener("click", () => {
   draw();
 });
 
-const btnSelectMode = document.getElementById("btn-select-mode");
-btnSelectMode.addEventListener("click", () => {
-  isSelectMode = !isSelectMode;
-  btnSelectMode.classList.toggle("active", isSelectMode);
-  clearSelection();
-  dragMode = null;
-  if (isSelectMode) {
-    showHint("ドラッグで範囲選択、四角をタップで選択/解除", 2400);
-  }
-  draw();
-});
+document.getElementById("btn-mode").addEventListener("click", cycleMode);
 
 document.getElementById("btn-undo").addEventListener("click", undo);
 document.getElementById("btn-redo").addEventListener("click", redo);
@@ -859,11 +917,7 @@ document.getElementById("btn-select-all").addEventListener("click", () => {
     showHint("四角がありません");
     return;
   }
-  if (!isSelectMode) {
-    isSelectMode = true;
-    btnSelectMode.classList.add("active");
-  }
-  dragMode = null;
+  if (editMode !== "select") setMode("select");
   selection = new Set(state.rects.map(r => r.id));
   showHint("全ての四角を選択しました", 1600);
   draw();
@@ -1196,6 +1250,7 @@ function init() {
   resizeCanvas();
   syncGridUI();
   updateUndoRedoButtons();
+  updateModeButton();
   if (restored && state.rects.length) {
     showHint("前回の編集内容を復元しました", 2000);
   } else {
