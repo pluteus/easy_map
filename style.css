@@ -21,12 +21,22 @@ html, body {
   display: flex;
   gap: 8px;
   z-index: 20;
+  max-width: calc(100vw - 20px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 5px;
 }
+.toolbar::-webkit-scrollbar { display: none; }
 #toolbar-tl { left: max(10px, env(safe-area-inset-left)); }
 #toolbar-tr { right: max(10px, env(safe-area-inset-right)); }
 
 .tbtn {
   width: 44px; height: 44px;
+  flex: 0 0 44px;
   border-radius: 12px;
   border: none;
   background: rgba(30,30,30,0.86);
@@ -40,8 +50,6 @@ html, body {
 .tbtn.active { background: #2b6cf6; }
 .tbtn:disabled { opacity: 0.35; }
 .tbtn:disabled:active { background: rgba(30,30,30,0.86); }
-
-#toolbar-tl { flex-wrap: wrap; max-width: calc(100vw - 20px); }
 
 #zoom-indicator {
   position: fixed;
