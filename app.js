@@ -17,7 +17,15 @@ const state = {
   nextId: 1,
 };
 
-let selectedId = null;
+let selection = new Set();   // 選択中の四角のID集合(通常モードでも0〜1個で利用)
+let isSelectMode = false;    // 範囲選択モード
+
+function selectOnly(id) { selection = new Set(id == null ? [] : [id]); }
+function clearSelection() { selection = new Set(); }
+function toggleSelectionId(id) {
+  if (selection.has(id)) selection.delete(id); else selection.add(id);
+}
+function isSelected(id) { return selection.has(id); }
 
 /* ---------------------------------------------------------
    ユーティリティ
@@ -131,15 +139,17 @@ function drawGrid() {
 }
 
 function drawRect(r) {
+  const sel = isSelected(r.id);
+  const groupSel = sel && (isSelectMode || selection.size > 1);
   const center = rectCenter(r);
   ctx.save();
   ctx.translate(center.x, center.y);
   ctx.rotate((r.rotation * Math.PI) / 180);
 
   // 本体
-  ctx.fillStyle = "#ffffff";
-  ctx.strokeStyle = "#1a1a1a";
-  ctx.lineWidth = (r.id === selectedId ? 3 : 2) / state.scale;
+  ctx.fillStyle = groupSel ? "rgba(43,108,246,0.14)" : "#ffffff";
+  ctx.strokeStyle = sel ? "#2b6cf6" : "#1a1a1a";
+  ctx.lineWidth = (sel ? 3 : 2) / state.scale;
   ctx.fillRect(-r.w / 2, -r.h / 2, r.w, r.h);
   ctx.strokeRect(-r.w / 2, -r.h / 2, r.w, r.h);
 
@@ -147,7 +157,7 @@ function drawRect(r) {
 
   ctx.restore();
 
-  if (r.id === selectedId) drawHandles(r);
+  if (sel && !groupSel) drawHandles(r);
 }
 
 function drawHandles(r) {
@@ -330,6 +340,8 @@ canvas.addEventListener("pointerup", onPointerUp);
 canvas.addEventListener("pointercancel", onPointerUp);
 canvas.addEventListener("pointerleave", (e) => { if (pointers.has(e.pointerId)) onPointerUp(e); });
 
+const TAP_MOVE_THRESH = 10; // これ以上動いたら「タップ」ではなく「ドラッグ」とみなす(画面px)
+
 function onPointerDown(e) {
   if (isOverlayOpen()) return;
   canvas.setPointerCapture(e.pointerId);
@@ -346,13 +358,28 @@ function startSingleDrag(x, y) {
   const hit = hitTest(x, y);
   const now = Date.now();
 
+  if (isSelectMode) {
+    if (hit.type === "create") {
+      // 空白部分:ドラッグで矩形選択、タップのみなら選択解除
+      dragMode = "marquee-pending";
+      dragData = { startX: x, startY: y, curX: x, curY: y };
+    } else {
+      // 四角の上:タップなら選択トグル、ドラッグなら選択中の四角をまとめて移動
+      dragMode = "toggle-pending";
+      dragData = { rect: hit.rect, startScreenX: x, startScreenY: y, grabWorld: screenToWorld(x, y) };
+    }
+    draw();
+    return;
+  }
+
+  // 通常モード(単一選択)
   if (hit.type === "move") {
     if (lastTap && lastTap.rectId === hit.rect.id &&
         now - lastTap.time < 350 &&
         Math.hypot(lastTap.x - x, lastTap.y - y) < 32) {
       lastTap = null;
       dragMode = null;
-      selectedId = hit.rect.id;
+      selectOnly(hit.rect.id);
       draw();
       openTextEditor(hit.rect);
       return;
@@ -362,7 +389,7 @@ function startSingleDrag(x, y) {
     lastTap = null;
   }
 
-  selectedId = hit.type === "create" ? null : hit.rect.id;
+  selectOnly(hit.type === "create" ? null : hit.rect.id);
 
   if (hit.type === "resize") {
     const r = hit.rect;
@@ -389,13 +416,25 @@ function startSingleDrag(x, y) {
 function startTwoFingerGesture() {
   const pts = [...pointers.values()];
   const [pA, pB] = pts;
-  const rect = rectUnderBothPoints(pA, pB);
 
+  // 範囲選択モード中に、選択済みの四角の上で2本指ツイスト→選択グループ全体を回転
+  if (isSelectMode && selection.size > 0) {
+    const rect = rectUnderBothPoints(pA, pB);
+    if (rect && isSelected(rect.id)) {
+      const ang = Math.atan2(pB.y - pA.y, pB.x - pA.x) * (180 / Math.PI);
+      dragMode = "rotate";
+      dragData = { rects: state.rects.filter(r => isSelected(r.id)), baseAngle: ang };
+      draw();
+      return;
+    }
+  }
+
+  const rect = !isSelectMode ? rectUnderBothPoints(pA, pB) : null;
   if (rect) {
-    selectedId = rect.id;
+    selectOnly(rect.id);
     const ang = Math.atan2(pB.y - pA.y, pB.x - pA.x) * (180 / Math.PI);
     dragMode = "rotate";
-    dragData = { rect, baseAngle: ang, accum: 0 };
+    dragData = { rects: [rect], baseAngle: ang };
   } else {
     const dist = Math.hypot(pB.x - pA.x, pB.y - pA.y);
     const mid = { x: (pA.x + pB.x) / 2, y: (pA.y + pB.y) / 2 };
@@ -433,6 +472,36 @@ function onPointerMove(e) {
   } else if (dragMode === "resize") {
     doResize(e.clientX, e.clientY);
     draw();
+  } else if (dragMode === "marquee-pending") {
+    dragData.curX = e.clientX; dragData.curY = e.clientY;
+    if (Math.hypot(e.clientX - dragData.startX, e.clientY - dragData.startY) > TAP_MOVE_THRESH) {
+      dragMode = "marquee";
+      draw();
+      drawMarquee();
+    }
+  } else if (dragMode === "marquee") {
+    dragData.curX = e.clientX; dragData.curY = e.clientY;
+    draw();
+    drawMarquee();
+  } else if (dragMode === "toggle-pending") {
+    if (Math.hypot(e.clientX - dragData.startScreenX, e.clientY - dragData.startScreenY) > TAP_MOVE_THRESH) {
+      if (!isSelected(dragData.rect.id)) selection.add(dragData.rect.id);
+      const starts = new Map();
+      for (const r of state.rects) if (isSelected(r.id)) starts.set(r.id, { x: r.x, y: r.y });
+      dragMode = "group-move";
+      dragData = { grabWorld: dragData.grabWorld, starts };
+      draw();
+    }
+  } else if (dragMode === "group-move") {
+    const w = screenToWorld(e.clientX, e.clientY);
+    const dx = w.x - dragData.grabWorld.x, dy = w.y - dragData.grabWorld.y;
+    const g = state.gridSize;
+    const sdx = snap(dx, g), sdy = snap(dy, g);
+    for (const r of state.rects) {
+      const s = dragData.starts.get(r.id);
+      if (s) { r.x = s.x + sdx; r.y = s.y + sdy; }
+    }
+    draw();
   } else if (dragMode === "pinch" && pointers.size >= 2) {
     const pts = [...pointers.values()];
     const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
@@ -454,12 +523,27 @@ function onPointerMove(e) {
     const THRESH = 42;
     if (Math.abs(delta) >= THRESH) {
       const step = delta > 0 ? 90 : -90;
-      dragData.rect.rotation = ((dragData.rect.rotation + step) % 360 + 360) % 360;
+      for (const r of dragData.rects) r.rotation = ((r.rotation + step) % 360 + 360) % 360;
       dragData.baseAngle = ang;
       draw();
       if (navigator.vibrate) navigator.vibrate(8);
     }
   }
+}
+
+function drawMarquee() {
+  const { startX, startY, curX, curY } = dragData;
+  const x = Math.min(startX, curX), y = Math.min(startY, curY);
+  const w = Math.abs(curX - startX), h = Math.abs(curY - startY);
+  ctx.save();
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = "rgba(43,108,246,0.10)";
+  ctx.strokeStyle = "#2b6cf6";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeRect(x, y, w, h);
+  ctx.restore();
 }
 
 function doResize(screenX, screenY) {
@@ -511,13 +595,32 @@ function onPointerUp(e) {
     if (w >= state.gridSize && h >= state.gridSize) {
       const rect = { id: uid(), x, y, w, h, rotation: 0, text: "" };
       state.rects.push(rect);
-      selectedId = rect.id;
+      selectOnly(rect.id);
     } else {
-      selectedId = null;
+      selectOnly(null);
     }
     dragMode = null;
     draw();
     return;
+  }
+
+  if (dragMode === "marquee-pending") {
+    // 移動なしのタップ:選択解除
+    clearSelection();
+    dragMode = null;
+  } else if (dragMode === "marquee") {
+    const { startX, startY, curX, curY } = dragData;
+    const wa = screenToWorld(Math.min(startX, curX), Math.min(startY, curY));
+    const wb = screenToWorld(Math.max(startX, curX), Math.max(startY, curY));
+    for (const r of state.rects) {
+      const intersects = r.x < wb.x && r.x + r.w > wa.x && r.y < wb.y && r.y + r.h > wa.y;
+      if (intersects) selection.add(r.id);
+    }
+    dragMode = null;
+  } else if (dragMode === "toggle-pending") {
+    // 移動なしのタップ:選択トグル
+    toggleSelectionId(dragData.rect.id);
+    dragMode = null;
   }
 
   if (pointers.size === 0) {
@@ -527,6 +630,8 @@ function onPointerUp(e) {
     // 2本指→1本指になった場合、残り1本で新規ドラッグを再開
     const [p] = [...pointers.values()];
     startSingleDrag(p.x, p.y);
+  } else {
+    draw();
   }
 }
 
@@ -578,8 +683,33 @@ document.getElementById("text-edit-ok").addEventListener("click", () => {
 document.getElementById("text-edit-cancel").addEventListener("click", closeTextEditor);
 document.getElementById("text-edit-delete").addEventListener("click", () => {
   state.rects = state.rects.filter(r => r.id !== editingRectId);
-  if (selectedId === editingRectId) selectedId = null;
+  selection.delete(editingRectId);
   closeTextEditor();
+  draw();
+});
+
+/* ---------------------------------------------------------
+   削除ボタン・範囲選択ボタン
+--------------------------------------------------------- */
+document.getElementById("btn-delete").addEventListener("click", () => {
+  if (selection.size === 0) {
+    showHint("削除する四角を選択してください");
+    return;
+  }
+  state.rects = state.rects.filter(r => !isSelected(r.id));
+  clearSelection();
+  draw();
+});
+
+const btnSelectMode = document.getElementById("btn-select-mode");
+btnSelectMode.addEventListener("click", () => {
+  isSelectMode = !isSelectMode;
+  btnSelectMode.classList.toggle("active", isSelectMode);
+  clearSelection();
+  dragMode = null;
+  if (isSelectMode) {
+    showHint("ドラッグで範囲選択、四角をタップで選択/解除", 2400);
+  }
   draw();
 });
 
@@ -631,7 +761,7 @@ document.getElementById("file-input").addEventListener("change", (e) => {
         state.gridSize = data.gridSize;
         syncGridUI();
       }
-      selectedId = null;
+      clearSelection();
       fitView();
       showHint("読み込みました");
     } catch (err) {
@@ -813,7 +943,7 @@ gridRange.addEventListener("input", () => {
 document.getElementById("settings-clear").addEventListener("click", () => {
   if (confirm("キャンバス上のすべての四角を削除します。よろしいですか?")) {
     state.rects = [];
-    selectedId = null;
+    clearSelection();
     settingsPanel.classList.add("hidden");
     draw();
   }
