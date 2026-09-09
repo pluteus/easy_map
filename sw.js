@@ -1,4 +1,4 @@
-const CACHE_NAME = "storemap-cache-v4";
+const CACHE_NAME = "storemap-cache-v6";
 const ASSETS = [
   "./",
   "./index.html",
@@ -11,8 +11,16 @@ const ASSETS = [
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    // ここでは skipWaiting() を呼ばない: 新しいバージョンは
+    // ユーザーが更新を承認するまで「待機中」の状態のままにする
   );
+});
+
+self.addEventListener("message", (e) => {
+  if (e.data === "SKIP_WAITING" || (e.data && e.data.type === "SKIP_WAITING")) {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (e) => {

@@ -13,6 +13,7 @@ const state = {
   scale: 1,           // 画面表示倍率
   offsetX: 40,
   offsetY: 90,
+  viewRotation: 0,    // キャンバス全体の表示回転(0/90/180/270度)
   rects: [],           // {id,x,y,w,h,rotation,text,fontSize}
   nextId: 1,
 };
@@ -130,15 +131,39 @@ function uid() { return state.nextId++; }
 function snap(v, grid) { return Math.round(v / grid) * grid; }
 
 function worldToScreen(x, y) {
-  return { x: x * state.scale + state.offsetX, y: y * state.scale + state.offsetY };
+  const sx = x * state.scale + state.offsetX;
+  const sy = y * state.scale + state.offsetY;
+  return rotateScreenPoint(sx, sy, state.viewRotation);
 }
 function screenToWorld(x, y) {
-  return { x: (x - state.offsetX) / state.scale, y: (y - state.offsetY) / state.scale };
+  const pre = rotateScreenPoint(x, y, -state.viewRotation);
+  return { x: (pre.x - state.offsetX) / state.scale, y: (pre.y - state.offsetY) / state.scale };
 }
 function rotVec(x, y, deg) {
   const r = (deg * Math.PI) / 180;
   const c = Math.cos(r), s = Math.sin(r);
   return { x: x * c - y * s, y: x * s + y * c };
+}
+function screenCenter() {
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+}
+// キャンバス全体の表示回転(viewRotation)を考慮して、画面中心を軸に
+// スクリーン座標を回転させる。worldToScreen/screenToWorld から利用する。
+function rotateScreenPoint(x, y, deg) {
+  if (!deg) return { x, y };
+  const c = screenCenter();
+  const rel = rotVec(x - c.x, y - c.y, deg);
+  return { x: c.x + rel.x, y: c.y + rel.y };
+}
+// draw() や drawCreatePreview() で使う、ワールド座標系からデバイス座標系への
+// 一連の ctx 変換(表示回転→パン/ズーム)をまとめて適用するヘルパー
+function applyViewTransform() {
+  const c = screenCenter();
+  ctx.translate(c.x, c.y);
+  ctx.rotate((state.viewRotation * Math.PI) / 180);
+  ctx.translate(-c.x, -c.y);
+  ctx.translate(state.offsetX, state.offsetY);
+  ctx.scale(state.scale, state.scale);
 }
 
 function getRect(id) { return state.rects.find(r => r.id === id); }
@@ -197,17 +222,31 @@ function bothPointsInBounds(pA, pB, bounds) {
   return inBounds(pA) && inBounds(pB);
 }
 
+// 90度回転した四角の「見た目の外接矩形」がグリッドに沿うよう、中心位置を
+// 調整して x,y(回転前基準の左上)を計算し直す。四角が正方形でない場合、
+// 90/270度回転すると見た目の幅と高さが入れ替わるため必要になる。
+function snapPositionForRotation(r, desiredCenter) {
+  const g = state.gridSize;
+  const rot = ((r.rotation % 360) + 360) % 360;
+  const swapped = (rot === 90 || rot === 270);
+  const visualW = swapped ? r.h : r.w;
+  const visualH = swapped ? r.w : r.h;
+  const snappedLeft = snap(desiredCenter.x - visualW / 2, g);
+  const snappedTop = snap(desiredCenter.y - visualH / 2, g);
+  const newCenter = { x: snappedLeft + visualW / 2, y: snappedTop + visualH / 2 };
+  r.x = newCenter.x - r.w / 2;
+  r.y = newCenter.y - r.h / 2;
+}
+
 // 選択中の四角群を、外接矩形の中心を軸に stepDeg 度だけ一括回転する
 function rotateGroup(rects, pivot, stepDeg) {
-  const g = state.gridSize;
   for (const r of rects) {
     const c = rectCenter(r);
     const rel = { x: c.x - pivot.x, y: c.y - pivot.y };
     const rotated = rotVec(rel.x, rel.y, stepDeg);
     const newCenter = { x: pivot.x + rotated.x, y: pivot.y + rotated.y };
-    r.x = snap(newCenter.x - r.w / 2, g);
-    r.y = snap(newCenter.y - r.h / 2, g);
     r.rotation = ((r.rotation + stepDeg) % 360 + 360) % 360;
+    snapPositionForRotation(r, newCenter);
   }
 }
 
@@ -269,11 +308,9 @@ function draw() {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width / DPR, canvas.height / DPR);
 
-  drawGrid();
-
   ctx.save();
-  ctx.translate(state.offsetX, state.offsetY);
-  ctx.scale(state.scale, state.scale);
+  applyViewTransform();
+  drawGrid();
   for (const r of state.rects) drawRect(r);
   drawSelectionBounds();
   ctx.restore();
@@ -300,30 +337,36 @@ function drawSelectionBounds() {
   ctx.restore();
 }
 
+// グリッドは drawRect などと同じ ctx 変換(applyViewTransform)の中で、
+// ワールド座標のまま直接描くことで、キャンバス全体の表示回転にも自動的に追従する。
 function drawGrid() {
   const g = state.gridSize;
   const w = canvas.width / DPR, h = canvas.height / DPR;
-  const topLeft = screenToWorld(0, 0);
-  const bottomRight = screenToWorld(w, h);
+  const corners = [
+    screenToWorld(0, 0), screenToWorld(w, 0),
+    screenToWorld(0, h), screenToWorld(w, h),
+  ];
+  const minX = Math.min(...corners.map(p => p.x));
+  const maxX = Math.max(...corners.map(p => p.x));
+  const minY = Math.min(...corners.map(p => p.y));
+  const maxY = Math.max(...corners.map(p => p.y));
 
-  const startX = Math.floor(topLeft.x / g) * g;
-  const endX = Math.ceil(bottomRight.x / g) * g;
-  const startY = Math.floor(topLeft.y / g) * g;
-  const endY = Math.ceil(bottomRight.y / g) * g;
+  const startX = Math.floor(minX / g) * g;
+  const endX = Math.ceil(maxX / g) * g;
+  const startY = Math.floor(minY / g) * g;
+  const endY = Math.ceil(maxY / g) * g;
 
   ctx.save();
   ctx.strokeStyle = "#d7d7da";
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1 / state.scale;
   ctx.beginPath();
   for (let x = startX; x <= endX; x += g) {
-    const sx = Math.round(worldToScreen(x, 0).x) + 0.5;
-    ctx.moveTo(sx, 0);
-    ctx.lineTo(sx, h);
+    ctx.moveTo(x, startY);
+    ctx.lineTo(x, endY);
   }
   for (let y = startY; y <= endY; y += g) {
-    const sy = Math.round(worldToScreen(0, y).y) + 0.5;
-    ctx.moveTo(0, sy);
-    ctx.lineTo(w, sy);
+    ctx.moveTo(startX, y);
+    ctx.lineTo(endX, y);
   }
   ctx.stroke();
   ctx.restore();
@@ -625,6 +668,7 @@ function startSingleDrag(x, y) {
 function startPinch(pA, pB) {
   const dist = Math.hypot(pB.x - pA.x, pB.y - pA.y);
   const mid = { x: (pA.x + pB.x) / 2, y: (pA.y + pB.y) / 2 };
+  const ang = Math.atan2(pB.y - pA.y, pB.x - pA.x) * (180 / Math.PI);
   dragMode = "pinch";
   dragData = {
     startDist: dist,
@@ -632,6 +676,7 @@ function startPinch(pA, pB) {
     startOffsetX: state.offsetX,
     startOffsetY: state.offsetY,
     midWorld: screenToWorld(mid.x, mid.y),
+    baseAngle: ang,
   };
   draw();
 }
@@ -685,8 +730,10 @@ function onPointerMove(e) {
   }
 
   if (dragMode === "pan") {
-    state.offsetX = dragData.startOffsetX + (e.clientX - dragData.startScreenX);
-    state.offsetY = dragData.startOffsetY + (e.clientY - dragData.startScreenY);
+    const raw = { x: e.clientX - dragData.startScreenX, y: e.clientY - dragData.startScreenY };
+    const d = rotVec(raw.x, raw.y, -state.viewRotation);
+    state.offsetX = dragData.startOffsetX + d.x;
+    state.offsetY = dragData.startOffsetY + d.y;
     draw();
   } else if (dragMode === "create") {
     const w = screenToWorld(e.clientX, e.clientY);
@@ -744,11 +791,32 @@ function onPointerMove(e) {
     let newScale = dragData.startScale * factor;
     newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
     const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+
+    // 2本指ツイストでキャンバス全体を90度単位で回転(ピンチズームと同時に検知)
+    const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x) * (180 / Math.PI);
+    let delta = ang - dragData.baseAngle;
+    while (delta > 180) delta -= 360;
+    while (delta < -180) delta += 360;
+    const ROTATE_THRESH = 42;
+    let newRotation = state.viewRotation;
+    let rotated = false;
+    if (Math.abs(delta) >= ROTATE_THRESH) {
+      const step = delta > 0 ? 90 : -90;
+      newRotation = ((state.viewRotation + step) % 360 + 360) % 360;
+      dragData.baseAngle = ang;
+      rotated = true;
+    }
+
     state.scale = newScale;
-    state.offsetX = mid.x - dragData.midWorld.x * newScale;
-    state.offsetY = mid.y - dragData.midWorld.y * newScale;
+    state.viewRotation = newRotation;
+    // ピンチ/回転の中心(mid)がその瞬間のワールド座標(midWorld)を指し続けるよう offset を再計算
+    const pre = rotateScreenPoint(mid.x, mid.y, -state.viewRotation);
+    state.offsetX = pre.x - dragData.midWorld.x * newScale;
+    state.offsetY = pre.y - dragData.midWorld.y * newScale;
+
     draw();
     showZoom();
+    if (rotated && navigator.vibrate) navigator.vibrate(8);
   } else if (dragMode === "rotate" && pointers.size >= 2) {
     const pts = [...pointers.values()];
     const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x) * (180 / Math.PI);
@@ -758,7 +826,10 @@ function onPointerMove(e) {
     const THRESH = 42;
     if (Math.abs(delta) >= THRESH) {
       const step = delta > 0 ? 90 : -90;
-      for (const r of dragData.rects) r.rotation = ((r.rotation + step) % 360 + 360) % 360;
+      for (const r of dragData.rects) {
+        r.rotation = ((r.rotation + step) % 360 + 360) % 360;
+        snapPositionForRotation(r, rectCenter(r));
+      }
       dragData.baseAngle = ang;
       draw();
       if (navigator.vibrate) navigator.vibrate(8);
@@ -822,8 +893,7 @@ function drawCreatePreview() {
   const w = Math.abs(curX - startX), h = Math.abs(curY - startY);
   if (w <= 0 || h <= 0) return;
   ctx.save();
-  ctx.translate(state.offsetX, state.offsetY);
-  ctx.scale(state.scale, state.scale);
+  applyViewTransform();
   ctx.fillStyle = "rgba(43,108,246,0.12)";
   ctx.strokeStyle = "#2b6cf6";
   ctx.lineWidth = 2 / state.scale;
@@ -896,8 +966,9 @@ canvas.addEventListener("wheel", (e) => {
   const before = screenToWorld(e.clientX, e.clientY);
   state.scale = newScale;
   const after = worldToScreen(before.x, before.y);
-  state.offsetX += e.clientX - after.x;
-  state.offsetY += e.clientY - after.y;
+  const d = rotVec(e.clientX - after.x, e.clientY - after.y, -state.viewRotation);
+  state.offsetX += d.x;
+  state.offsetY += d.y;
   draw();
   showZoom();
 }, { passive: false });
@@ -913,7 +984,8 @@ function isOverlayOpen() {
   return !textOverlay.classList.contains("hidden") ||
          !document.getElementById("save-menu").classList.contains("hidden") ||
          !document.getElementById("settings-panel").classList.contains("hidden") ||
-         !rectContextMenu.classList.contains("hidden");
+         !rectContextMenu.classList.contains("hidden") ||
+         !document.getElementById("update-dialog").classList.contains("hidden");
 }
 
 function openTextEditor(rect) {
@@ -972,7 +1044,9 @@ document.getElementById("ctx-rotate-right").addEventListener("click", () => {
   const r = getRect(contextMenuRectId);
   if (r) {
     pushHistory();
+    const c = rectCenter(r);
     r.rotation = ((r.rotation + 90) % 360 + 360) % 360;
+    snapPositionForRotation(r, c);
     draw();
   }
   closeRectContextMenu();
@@ -981,7 +1055,9 @@ document.getElementById("ctx-rotate-left").addEventListener("click", () => {
   const r = getRect(contextMenuRectId);
   if (r) {
     pushHistory();
+    const c = rectCenter(r);
     r.rotation = ((r.rotation - 90) % 360 + 360) % 360;
+    snapPositionForRotation(r, c);
     draw();
   }
   closeRectContextMenu();
@@ -1328,6 +1404,7 @@ document.getElementById("btn-fullscreen").addEventListener("click", () => {
    表示を全体にフィット
 --------------------------------------------------------- */
 function fitView() {
+  state.viewRotation = 0;
   if (!state.rects.length) { state.scale = 1; state.offsetX = 40; state.offsetY = 90; draw(); return; }
   const margin = state.gridSize * 3;
   const minX = Math.min(...state.rects.map(r => r.x)) - margin;
@@ -1363,6 +1440,7 @@ function saveToLocalStorage() {
       scale: state.scale,
       offsetX: state.offsetX,
       offsetY: state.offsetY,
+      viewRotation: state.viewRotation,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (err) { /* 保存先が使えない場合は無視 */ }
@@ -1381,6 +1459,7 @@ function loadFromLocalStorage() {
     if (typeof data.scale === "number") state.scale = data.scale;
     if (typeof data.offsetX === "number") state.offsetX = data.offsetX;
     if (typeof data.offsetY === "number") state.offsetY = data.offsetY;
+    if (typeof data.viewRotation === "number") state.viewRotation = ((data.viewRotation % 360) + 360) % 360;
     return true;
   } catch (err) {
     return false;
@@ -1393,6 +1472,72 @@ document.addEventListener("visibilitychange", () => {
 });
 window.addEventListener("pagehide", saveToLocalStorage);
 window.addEventListener("beforeunload", saveToLocalStorage);
+
+/* ---------------------------------------------------------
+   PWAアップデート検知・確認ダイアログ
+   GitHub Pages上のsw.jsが更新されると、ブラウザが新しいService
+   Workerを「待機中」の状態でインストールする。ここではそれを検知し
+   たら、ユーザーに今すぐ更新するかどうかを尋ねるダイアログを出す。
+   「今すぐ更新」が押されたら待機中のワーカーへ skipWaiting を指示
+   し、控えているコントローラー切り替わりを検知してページを再読込
+   することで最新版を反映する。
+--------------------------------------------------------- */
+const updateDialog = document.getElementById("update-dialog");
+let pendingRegistration = null;
+
+function showUpdateDialog(reg) {
+  pendingRegistration = reg;
+  updateDialog.classList.remove("hidden");
+}
+function hideUpdateDialog() {
+  updateDialog.classList.add("hidden");
+}
+
+document.getElementById("update-now").addEventListener("click", () => {
+  if (pendingRegistration && pendingRegistration.waiting) {
+    pendingRegistration.waiting.postMessage({ type: "SKIP_WAITING" });
+  }
+  hideUpdateDialog();
+});
+document.getElementById("update-later").addEventListener("click", () => {
+  hideUpdateDialog();
+});
+
+function initServiceWorker() {
+  if (!("serviceWorker" in navigator) || !(location.protocol === "https:" || location.hostname === "localhost")) return;
+
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    // 登録時点ですでに新しいバージョンが待機中だった場合(前回起動時に「後で」を選んだ場合など)
+    if (reg.waiting && navigator.serviceWorker.controller) {
+      showUpdateDialog(reg);
+    }
+
+    reg.addEventListener("updatefound", () => {
+      const installing = reg.installing;
+      if (!installing) return;
+      installing.addEventListener("statechange", () => {
+        // controller が既に存在する = 初回インストールではなく更新である
+        if (installing.state === "installed" && navigator.serviceWorker.controller) {
+          showUpdateDialog(reg);
+        }
+      });
+    });
+
+    // アプリをフォアグラウンドに戻した際などに能動的に更新をチェック
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") reg.update().catch(() => {});
+    });
+    setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+  }).catch(() => {});
+
+  // 「今すぐ更新」によって新しいワーカーがアクティブ化されたらページを再読込
+  let hasReloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (hasReloaded) return;
+    hasReloaded = true;
+    window.location.reload();
+  });
+}
 
 /* ---------------------------------------------------------
    初期化
@@ -1409,9 +1554,7 @@ function init() {
   } else {
     showHint("キャンバスをスワイプして四角を配置", 2400);
   }
-  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
-  }
+  initServiceWorker();
 }
 init();
 
