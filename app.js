@@ -26,23 +26,26 @@ let rotationAnimActive = false; // 回転アニメーション中は入力をブ
 /* ---------------------------------------------------------
    編集モード (hand / pencil / select)
 --------------------------------------------------------- */
-const MODE_ORDER = ["hand", "pencil", "select"];
+const MODE_ORDER = ["hand", "pencil", "layout", "select"];
 let editMode = "pencil";
 let isSelectMode = false;    // editMode === "select" と同期させておく(既存コード互換用)
 
 const MODE_ICONS = {
   hand: `<svg viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l3 3" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   pencil: `<svg viewBox="0 0 24 24"><path d="M4 20l1-4L16 5l3 3L8 19l-4 1z" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 7l3 3" fill="none" stroke-width="1.6"/></svg>`,
+  layout: `<svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1.5" fill="none" stroke-width="1.6"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke-width="1.6" stroke-linecap="round"/></svg>`,
   select: `<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke-width="1.7" stroke-dasharray="3 2.4"/><circle cx="4" cy="4" r="1.6" fill="#fff" stroke="none"/><circle cx="20" cy="4" r="1.6" fill="#fff" stroke="none"/><circle cx="4" cy="20" r="1.6" fill="#fff" stroke="none"/><circle cx="20" cy="20" r="1.6" fill="#fff" stroke="none"/></svg>`,
 };
 const MODE_TITLES = {
   hand: "ハンドモード(タップで切替)",
   pencil: "ペンシルモード(タップで切替)",
+  layout: "レイアウトモード(タップで切替)",
   select: "範囲選択モード(タップで切替)",
 };
 const MODE_HINTS = {
   hand: "ハンドモード:1本指でキャンバスを移動できます",
   pencil: "ペンシルモード:1本指のスワイプで四角を作成できます",
+  layout: "レイアウトモード:四角の移動・リサイズ・回転と、キャンバスの移動・回転ができます(新規作成は不可)",
   select: "範囲選択モード:ドラッグで範囲選択、四角をタップで選択/解除",
 };
 
@@ -70,6 +73,64 @@ function cycleMode() {
   setMode(next);
   showHint(MODE_HINTS[next], 2400);
 }
+
+/* ---------------------------------------------------------
+   モード切替メニュー(モードボタン下に一覧表示)
+--------------------------------------------------------- */
+const modeMenu = document.getElementById("mode-menu");
+
+function isModeMenuOpen() {
+  return !modeMenu.classList.contains("hidden");
+}
+
+function closeModeMenu() {
+  modeMenu.classList.add("hidden");
+}
+
+function openModeMenu() {
+  // 選択中以外のモードボタンを一覧表示
+  modeMenu.querySelectorAll(".mode-menu-item").forEach(el => el.remove());
+  MODE_ORDER.filter(m => m !== editMode).forEach(m => {
+    const btn = document.createElement("button");
+    btn.className = "mode-menu-item";
+    btn.innerHTML = `<span class="mode-menu-icon">${MODE_ICONS[m]}</span><span>${MODE_TITLES[m].replace("(タップで切替)", "")}</span>`;
+    btn.addEventListener("click", () => {
+      closeModeMenu();
+      setMode(m);
+      showHint(MODE_HINTS[m], 2400);
+    });
+    modeMenu.appendChild(btn);
+  });
+
+  modeMenu.classList.remove("hidden");
+
+  const btnMode = document.getElementById("btn-mode");
+  const margin = 8;
+  const btnRect = btnMode.getBoundingClientRect();
+  const menuRect = modeMenu.getBoundingClientRect();
+  let left = Math.min(btnRect.left, window.innerWidth - menuRect.width - margin);
+  left = Math.max(margin, left);
+  let top = Math.min(btnRect.bottom + 6, window.innerHeight - menuRect.height - margin);
+  top = Math.max(margin, top);
+  modeMenu.style.left = left + "px";
+  modeMenu.style.top = top + "px";
+}
+
+function toggleModeMenu() {
+  if (isModeMenuOpen()) {
+    closeModeMenu();
+  } else {
+    openModeMenu();
+  }
+}
+
+// モードメニュー表示中に、メニューとモードボタン以外の場所をタップしたら閉じる
+document.addEventListener("pointerdown", (e) => {
+  if (!isModeMenuOpen()) return;
+  if (modeMenu.contains(e.target)) return;
+  if (e.target.closest && e.target.closest("#btn-mode")) return;
+  closeModeMenu();
+});
 
 function selectOnly(id) { selection = new Set(id == null ? [] : [id]); }
 function clearSelection() { selection = new Set(); }
@@ -630,6 +691,16 @@ function startSingleDrag(x, y) {
     return;
   }
 
+  // レイアウトモード:四角の移動・リサイズは通常モードと同じ挙動にしつつ、
+  // 空白部分のドラッグは四角の新規作成ではなくキャンバスのパンにする
+  if (editMode === "layout" && hit.type === "create") {
+    dragMode = "pan";
+    dragData = { startScreenX: x, startScreenY: y, startOffsetX: state.offsetX, startOffsetY: state.offsetY };
+    startCanvasLongPress(x, y);
+    draw();
+    return;
+  }
+
   const now = Date.now();
 
   if (hit.type === "move") {
@@ -1016,6 +1087,7 @@ function isOverlayOpen() {
          !rectContextMenu.classList.contains("hidden") ||
          !document.getElementById("canvas-context-menu").classList.contains("hidden") ||
          !document.getElementById("update-dialog").classList.contains("hidden") ||
+         !document.getElementById("mode-menu").classList.contains("hidden") ||
          rotationAnimActive;
 }
 
@@ -1351,7 +1423,7 @@ document.getElementById("btn-delete").addEventListener("click", () => {
   draw();
 });
 
-document.getElementById("btn-mode").addEventListener("click", cycleMode);
+document.getElementById("btn-mode").addEventListener("click", toggleModeMenu);
 
 document.getElementById("btn-undo").addEventListener("click", undo);
 document.getElementById("btn-redo").addEventListener("click", redo);
