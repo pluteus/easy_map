@@ -20,7 +20,7 @@ const state = {
 
 let selection = new Set();   // 選択中の四角のID集合(通常モードでも0〜1個で利用)
 
-let rectRotAnim = null;      // 四角の回転アニメーション中の一時的な描画状態
+let rectRotAnim = null;      // 四角の回転アニメーション中の一時的な描画状態(Map<id, {currentRotation,currentX,currentY}>)
 let rotationAnimActive = false; // 回転アニメーション中は入力をブロックする
 
 /* ---------------------------------------------------------
@@ -378,7 +378,7 @@ function drawGrid() {
 function drawRect(r) {
   const sel = isSelected(r.id);
   const groupSel = sel && (isSelectMode || selection.size > 1);
-  const anim = (rectRotAnim && rectRotAnim.id === r.id) ? rectRotAnim : null;
+  const anim = rectRotAnim ? rectRotAnim.get(r.id) : null;
   const effRotation = anim ? anim.currentRotation : r.rotation;
   const center = anim
     ? { x: anim.currentX + r.w / 2, y: anim.currentY + r.h / 2 }
@@ -818,6 +818,7 @@ function onPointerMove(e) {
     }
     draw();
   } else if (dragMode === "pinch" && pointers.size >= 2) {
+    if (rotationAnimActive) return;
     const pts = [...pointers.values()];
     const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
     const factor = dist / dragData.startDist;
@@ -825,32 +826,29 @@ function onPointerMove(e) {
     newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
     const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
 
-    // 2本指ツイストでキャンバス全体を90度単位で回転(ピンチズームと同時に検知)
+    state.scale = newScale;
+    // ピンチの中心(mid)がその瞬間のワールド座標(midWorld)を指し続けるよう offset を再計算
+    const pre = rotateScreenPoint(mid.x, mid.y, -state.viewRotation);
+    state.offsetX = pre.x - dragData.midWorld.x * newScale;
+    state.offsetY = pre.y - dragData.midWorld.y * newScale;
+    draw();
+    showZoom();
+
+    // 2本指ツイストでキャンバス全体を90度単位で回転(ピンチズームと同時に検知)。
+    // サブメニューの回転ボタンと同じアニメーションで回す。
     const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x) * (180 / Math.PI);
     let delta = ang - dragData.baseAngle;
     while (delta > 180) delta -= 360;
     while (delta < -180) delta += 360;
     const ROTATE_THRESH = 42;
-    let newRotation = state.viewRotation;
-    let rotated = false;
     if (Math.abs(delta) >= ROTATE_THRESH) {
       const step = delta > 0 ? 90 : -90;
-      newRotation = ((state.viewRotation + step) % 360 + 360) % 360;
       dragData.baseAngle = ang;
-      rotated = true;
+      if (navigator.vibrate) navigator.vibrate(8);
+      animateCanvasRotation(step);
     }
-
-    state.scale = newScale;
-    state.viewRotation = newRotation;
-    // ピンチ/回転の中心(mid)がその瞬間のワールド座標(midWorld)を指し続けるよう offset を再計算
-    const pre = rotateScreenPoint(mid.x, mid.y, -state.viewRotation);
-    state.offsetX = pre.x - dragData.midWorld.x * newScale;
-    state.offsetY = pre.y - dragData.midWorld.y * newScale;
-
-    draw();
-    showZoom();
-    if (rotated && navigator.vibrate) navigator.vibrate(8);
   } else if (dragMode === "rotate" && pointers.size >= 2) {
+    if (rotationAnimActive) return;
     const pts = [...pointers.values()];
     const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x) * (180 / Math.PI);
     let delta = ang - dragData.baseAngle;
@@ -859,15 +857,14 @@ function onPointerMove(e) {
     const THRESH = 42;
     if (Math.abs(delta) >= THRESH) {
       const step = delta > 0 ? 90 : -90;
-      for (const r of dragData.rects) {
-        r.rotation = ((r.rotation + step) % 360 + 360) % 360;
-        snapPositionForRotation(r, rectCenter(r));
-      }
       dragData.baseAngle = ang;
-      draw();
       if (navigator.vibrate) navigator.vibrate(8);
+      for (const r of dragData.rects) {
+        animateRectRotation(r, step);
+      }
     }
   } else if (dragMode === "rotate-group" && pointers.size >= 2) {
+    if (rotationAnimActive) return;
     const pts = [...pointers.values()];
     const ang = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x) * (180 / Math.PI);
     let delta = ang - dragData.baseAngle;
@@ -876,10 +873,9 @@ function onPointerMove(e) {
     const THRESH = 42;
     if (Math.abs(delta) >= THRESH) {
       const step = delta > 0 ? 90 : -90;
-      rotateGroup(dragData.rects, dragData.pivot, step);
       dragData.baseAngle = ang;
-      draw();
       if (navigator.vibrate) navigator.vibrate(8);
+      animateGroupRotation(dragData.rects, dragData.pivot, step);
     }
   }
 }
@@ -1085,14 +1081,16 @@ function animateRectRotation(rect, delta) {
 
   lockForRotation();
   const startTime = performance.now();
-  rectRotAnim = { id: rect.id, currentRotation: fromRotation, currentX: fromX, currentY: fromY };
+  rectRotAnim = new Map([[rect.id, { currentRotation: fromRotation, currentX: fromX, currentY: fromY }]]);
 
   function step(now) {
     const t = Math.min(1, (now - startTime) / ROTATION_ANIM_MS);
     const e = easeInOutCubic(t);
-    rectRotAnim.currentRotation = fromRotation + delta * e;
-    rectRotAnim.currentX = fromX + (toX - fromX) * e;
-    rectRotAnim.currentY = fromY + (toY - fromY) * e;
+    rectRotAnim.set(rect.id, {
+      currentRotation: fromRotation + delta * e,
+      currentX: fromX + (toX - fromX) * e,
+      currentY: fromY + (toY - fromY) * e,
+    });
     draw();
     if (t < 1) {
       requestAnimationFrame(step);
@@ -1100,6 +1098,56 @@ function animateRectRotation(rect, delta) {
       rect.rotation = toRotation;
       rect.x = toX;
       rect.y = toY;
+      rectRotAnim = null;
+      unlockAfterRotation();
+      draw();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+// 選択中の四角群を、外接矩形の中心を軸に stepDeg 度だけ一括回転させるアニメーション。
+// 2本指ツイストでの一括回転を、右クリックメニューでの単体回転と同じ見た目にする。
+function animateGroupRotation(rects, pivot, stepDeg) {
+  if (rotationAnimActive) return;
+  const items = rects.map((r) => {
+    const fromRotation = r.rotation;
+    const fromX = r.x, fromY = r.y;
+    const c = rectCenter(r);
+    const rel = { x: c.x - pivot.x, y: c.y - pivot.y };
+    const rotated = rotVec(rel.x, rel.y, stepDeg);
+    const newCenter = { x: pivot.x + rotated.x, y: pivot.y + rotated.y };
+    const toRotation = ((fromRotation + stepDeg) % 360 + 360) % 360;
+    const preview = { ...r, rotation: toRotation };
+    snapPositionForRotation(preview, newCenter);
+    return { rect: r, fromRotation, fromX, fromY, toRotation, toX: preview.x, toY: preview.y };
+  });
+
+  lockForRotation();
+  const startTime = performance.now();
+  rectRotAnim = new Map(
+    items.map((it) => [it.rect.id, { currentRotation: it.fromRotation, currentX: it.fromX, currentY: it.fromY }])
+  );
+
+  function step(now) {
+    const t = Math.min(1, (now - startTime) / ROTATION_ANIM_MS);
+    const e = easeInOutCubic(t);
+    for (const it of items) {
+      rectRotAnim.set(it.rect.id, {
+        currentRotation: it.fromRotation + stepDeg * e,
+        currentX: it.fromX + (it.toX - it.fromX) * e,
+        currentY: it.fromY + (it.toY - it.fromY) * e,
+      });
+    }
+    draw();
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      for (const it of items) {
+        it.rect.rotation = it.toRotation;
+        it.rect.x = it.toX;
+        it.rect.y = it.toY;
+      }
       rectRotAnim = null;
       unlockAfterRotation();
       draw();
