@@ -418,6 +418,23 @@ const PAD = 6;
 const MIN_FONT = 9;
 const MAX_FONT = 120; // 四角が大きい場合でも際限なく巨大化しないための上限
 
+// 縦書き時、横向きのまま描画すると不自然に見える記号(長音記号・各種ハイフン類)。
+// これらは90度回転させて縦棒として表示する。
+const VERTICAL_ROTATE_CHARS = new Set(["ー", "ｰ", "－", "-", "‐", "‑", "‒", "–", "−", "〜", "～", "_"]);
+
+// 縦書きの1文字を描画する。回転対象の記号は90度回転させて縦棒に見せる。
+function fillVerticalChar(targetCtx, ch, x, y, colWidth) {
+  if (VERTICAL_ROTATE_CHARS.has(ch)) {
+    targetCtx.save();
+    targetCtx.translate(x, y);
+    targetCtx.rotate(Math.PI / 2);
+    targetCtx.fillText(ch, 0, 0, colWidth);
+    targetCtx.restore();
+  } else {
+    targetCtx.fillText(ch, x, y, colWidth);
+  }
+}
+
 function splitParagraphs(text) {
   return text.split("\n");
 }
@@ -500,7 +517,7 @@ function drawText(r) {
     for (const col of layout.columns) {
       let y = -((col.length - 1) * layout.fontSize * 1.15) / 2;
       for (const ch of col) {
-        ctx.fillText(ch, x, y, layout.colWidth);
+        fillVerticalChar(ctx, ch, x, y, layout.colWidth);
         y += layout.fontSize * 1.15;
       }
       x -= layout.colWidth;
@@ -1319,7 +1336,7 @@ function drawTextOn(targetCtx, r) {
     let x = totalW / 2 - layout.colWidth / 2;
     for (const col of layout.columns) {
       let y = -((col.length - 1) * layout.fontSize * 1.15) / 2;
-      for (const ch of col) { targetCtx.fillText(ch, x, y, layout.colWidth); y += layout.fontSize * 1.15; }
+      for (const ch of col) { fillVerticalChar(targetCtx, ch, x, y, layout.colWidth); y += layout.fontSize * 1.15; }
       x -= layout.colWidth;
     }
   }
@@ -1387,6 +1404,14 @@ document.getElementById("settings-clear").addEventListener("click", () => {
     settingsPanel.classList.add("hidden");
     draw();
   }
+});
+
+/* ---------------------------------------------------------
+   ヘルプ(このアプリについて)
+--------------------------------------------------------- */
+document.getElementById("btn-help").addEventListener("click", () => {
+  saveToLocalStorage();
+  window.location.href = "about.html";
 });
 
 /* ---------------------------------------------------------
