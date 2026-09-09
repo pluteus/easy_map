@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>店内マップエディタ について</title>
+<meta name="description" content="四角を並べて売り場を配置していく、ブラウザで動く店内マップ作成ツールの紹介ページ。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#ffffff;
+    --wash:#eceef0;
+    --grid:#d7d7da;
+    --ink:#1a1a1a;
+    --ink-soft:#5a5d61;
+    --accent:#2b6cf6;
+    --accent-soft:rgba(43,108,246,0.12);
+  }
+
+  *{ box-sizing:border-box; }
+
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--wash);
+    color:var(--ink);
+    font-family:-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    font-feature-settings:"palt";
+  }
+
+  h1,h2,h3,.brand-word{
+    font-family:"Zen Kaku Gothic New", -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+  }
+
+  .mono{
+    font-family:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  a{ color:inherit; }
+
+  .wrap{
+    max-width:720px;
+    margin:0 auto;
+    padding:0 24px;
+  }
+
+  /* ---------- header ---------- */
+  header.top{
+    padding:22px 0 20px;
+    border-bottom:1px solid var(--grid);
+    background:var(--paper);
+  }
+  header.top .wrap{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .brand-mark{ width:22px; height:22px; flex:0 0 auto; }
+  .brand-word{
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:0.02em;
+  }
+  .back-link{
+    font-size:13px;
+    color:var(--ink-soft);
+    text-decoration:none;
+    border-bottom:1px solid var(--grid);
+    padding-bottom:1px;
+  }
+  .back-link:hover{ color:var(--accent); border-color:var(--accent); }
+
+  /* ---------- hero ---------- */
+  .hero{
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+      var(--paper);
+    background-size:28px 28px, 28px 28px, auto;
+    padding:64px 0 56px;
+    border-bottom:1px solid var(--grid);
+  }
+  .hero h1{
+    font-size:clamp(30px, 6vw, 42px);
+    font-weight:900;
+    line-height:1.35;
+    letter-spacing:0.01em;
+    margin:0 0 14px;
+  }
+  .hero p.lead{
+    font-size:16px;
+    line-height:1.9;
+    color:var(--ink-soft);
+    max-width:32em;
+    margin:0 0 40px;
+  }
+
+  .shot-frame{
+    background:var(--paper);
+    border:1px solid var(--ink);
+    padding:14px 14px 10px;
+    max-width:340px;
+    margin:0 auto;
+  }
+  .shot-frame img{
+    display:block;
+    width:100%;
+    height:auto;
+    border:1px solid var(--grid);
+  }
+  .shot-caption{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-top:10px;
+    font-size:11.5px;
+    color:var(--ink-soft);
+  }
+  .shot-caption .mono{ font-size:11px; }
+
+  /* ---------- section shell ---------- */
+  section{
+    background:var(--paper);
+    border-bottom:1px solid var(--grid);
+  }
+  section .wrap{ padding:56px 24px; }
+  section h2{
+    font-size:22px;
+    font-weight:700;
+    margin:0 0 8px;
+  }
+  section .section-note{
+    font-size:14px;
+    color:var(--ink-soft);
+    margin:0 0 32px;
+    line-height:1.8;
+  }
+  .intro p{
+    font-size:15.5px;
+    line-height:2;
+    margin:0;
+  }
+
+  /* ---------- feature legend ---------- */
+  .legend-row{
+    display:flex;
+    gap:18px;
+    padding:22px 0;
+    border-top:1px solid var(--grid);
+  }
+  .legend-row:last-child{ padding-bottom:0; }
+  .legend-chip{ flex:0 0 auto; width:34px; height:34px; margin-top:2px; }
+  .legend-body h3{
+    font-size:15.5px;
+    font-weight:700;
+    margin:0 0 6px;
+  }
+  .legend-body p{
+    font-size:14px;
+    line-height:1.85;
+    color:var(--ink-soft);
+    margin:0;
+  }
+
+  /* ---------- steps ---------- */
+  .step-row{
+    display:flex;
+    gap:20px;
+    align-items:baseline;
+    padding:18px 0;
+    border-top:1px solid var(--grid);
+  }
+  .step-row .step-no{
+    flex:0 0 34px;
+    font-size:13px;
+    color:var(--accent);
+    font-weight:600;
+  }
+  .step-row p{
+    margin:0;
+    font-size:14.5px;
+    line-height:1.85;
+  }
+
+  /* ---------- spec sheet ---------- */
+  .spec-sheet{
+    border:1px solid var(--ink);
+  }
+  .spec-row{
+    display:flex;
+    justify-content:space-between;
+    gap:16px;
+    padding:13px 16px;
+    border-top:1px solid var(--grid);
+    font-size:13.5px;
+  }
+  .spec-row:first-child{ border-top:none; }
+  .spec-row dt{ color:var(--ink-soft); }
+  .spec-row dd{ margin:0; text-align:right; }
+
+  /* ---------- footer ---------- */
+  footer{
+    background:var(--ink);
+    color:#c9cbce;
+  }
+  footer .wrap{
+    padding:36px 24px 44px;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  footer .foot-links{
+    display:flex;
+    gap:20px;
+    flex-wrap:wrap;
+  }
+  footer a{
+    color:#ffffff;
+    text-decoration:none;
+    font-size:13.5px;
+    border-bottom:1px solid rgba(255,255,255,0.3);
+    padding-bottom:1px;
+  }
+  footer a:hover{ border-color:#ffffff; }
+  footer .credit{ font-size:12px; color:#8b8e92; }
+
+  @media (max-width:520px){
+    section .wrap{ padding:44px 20px; }
+    .hero{ padding:48px 0 40px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="18" height="18" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+        <circle cx="3" cy="3" r="2" fill="#2b6cf6"/>
+        <circle cx="21" cy="3" r="2" fill="#2b6cf6"/>
+        <circle cx="3" cy="21" r="2" fill="#2b6cf6"/>
+        <circle cx="21" cy="21" r="2" fill="#2b6cf6"/>
+      </svg>
+      <span class="brand-word">店内マップエディタ</span>
+    </div>
+    <a class="back-link" href="../index.html">アプリ一覧へ</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>四角を置いて、名前を書くだけ。<br>店内マップが描けます。</h1>
+    <p class="lead">
+      売り場をひとつずつ四角で並べていくだけの、ブラウザで動く店内レイアウト帳です。
+      インストール不要でそのまま開いて描き始められ、オフラインでも使えます。
+    </p>
+
+    <div class="shot-frame">
+      <img src="screenshot.jpg" alt="店内マップエディタの画面。乳製品売り場・野菜売り場・納豆の3つの四角がグリッド上に配置されている。">
+      <div class="shot-caption">
+        <span>乳製品売り場 / 野菜売り場 / 納豆</span>
+        <span class="mono">grid 32px</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="intro">
+  <div class="wrap">
+    <h2>このアプリについて</h2>
+    <p>
+      店内マップエディタは、キャンバスの上に四角を並べて売り場を配置していく、
+      ブラウザで動くマップエディタです。棚のレイアウト替えの下書きや、
+      スタッフに共有するための簡単な店内図づくりに使えます。
+      特別なソフトのインストールは必要なく、ブラウザで開けばすぐに描き始められます。
+    </p>
+  </div>
+</section>
+
+<section class="features">
+  <div class="wrap">
+    <h2>できること</h2>
+    <p class="section-note">売り場を置いて、名前を書いて、向きを整えるまで。</p>
+
+    <div class="legend-row">
+      <svg class="legend-chip" viewBox="0 0 34 34">
+        <rect x="5" y="5" width="24" height="24" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+        <circle cx="5" cy="5" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="5" r="2.4" fill="#2b6cf6"/>
+        <circle cx="5" cy="29" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="29" r="2.4" fill="#2b6cf6"/>
+      </svg>
+      <div class="legend-body">
+        <h3>四角を並べて売り場を配置</h3>
+        <p>キャンバスをスワイプするだけで四角が生まれます。角はグリッドにぴったり揃うので、隙間なく並べられます。</p>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <svg class="legend-chip" viewBox="0 0 34 34">
+        <rect x="5" y="5" width="24" height="24" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+        <circle cx="5" cy="5" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="5" r="2.4" fill="#2b6cf6"/>
+        <circle cx="5" cy="29" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="29" r="2.4" fill="#2b6cf6"/>
+      </svg>
+      <div class="legend-body">
+        <h3>中に売り場の名前を書き込む</h3>
+        <p>四角をダブルタップして文字を入力するだけ。縦長の四角には縦書き、横長の四角には横書きで、大きさに合わせて読みやすいサイズに調整されます。</p>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <svg class="legend-chip" viewBox="0 0 34 34">
+        <rect x="5" y="5" width="24" height="24" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+        <circle cx="5" cy="5" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="5" r="2.4" fill="#2b6cf6"/>
+        <circle cx="5" cy="29" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="29" r="2.4" fill="#2b6cf6"/>
+      </svg>
+      <div class="legend-body">
+        <h3>長押し・右クリックで向きを変える</h3>
+        <p>四角の上で長押し(PCでは右クリック)すると、回転や重なり順を変えるメニューが出ます。複数まとめて選んで、一度に回転させることもできます。</p>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <svg class="legend-chip" viewBox="0 0 34 34">
+        <rect x="5" y="5" width="24" height="24" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+        <circle cx="5" cy="5" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="5" r="2.4" fill="#2b6cf6"/>
+        <circle cx="5" cy="29" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="29" r="2.4" fill="#2b6cf6"/>
+      </svg>
+      <div class="legend-body">
+        <h3>キャンバスごと向きを変える</h3>
+        <p>ハンドモードで2本指をひねると、キャンバス全体を90度ずつ回転させて見た目を変えられます。</p>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <svg class="legend-chip" viewBox="0 0 34 34">
+        <rect x="5" y="5" width="24" height="24" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+        <circle cx="5" cy="5" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="5" r="2.4" fill="#2b6cf6"/>
+        <circle cx="5" cy="29" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="29" r="2.4" fill="#2b6cf6"/>
+      </svg>
+      <div class="legend-body">
+        <h3>PNGやJSONで書き出す</h3>
+        <p>完成したマップは画像(PNG)として保存したり、データ(JSON)として保存・読み込みしたりできます。</p>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <svg class="legend-chip" viewBox="0 0 34 34">
+        <rect x="5" y="5" width="24" height="24" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+        <circle cx="5" cy="5" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="5" r="2.4" fill="#2b6cf6"/>
+        <circle cx="5" cy="29" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="29" r="2.4" fill="#2b6cf6"/>
+      </svg>
+      <div class="legend-body">
+        <h3>オフラインでも使える</h3>
+        <p>ホーム画面に追加すればアプリのように起動できます。通信がなくても編集を続けられ、前回の内容は自動で復元されます。</p>
+      </div>
+    </div>
+
+    <div class="legend-row">
+      <svg class="legend-chip" viewBox="0 0 34 34">
+        <rect x="5" y="5" width="24" height="24" fill="none" stroke="#1a1a1a" stroke-width="2"/>
+        <circle cx="5" cy="5" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="5" r="2.4" fill="#2b6cf6"/>
+        <circle cx="5" cy="29" r="2.4" fill="#2b6cf6"/><circle cx="29" cy="29" r="2.4" fill="#2b6cf6"/>
+      </svg>
+      <div class="legend-body">
+        <h3>アップデートをお知らせ</h3>
+        <p>新しいバージョンが公開されると、更新するかどうかを尋ねるダイアログが表示されます。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="howto">
+  <div class="wrap">
+    <h2>使い方</h2>
+    <p class="section-note">最初にマップをひとつ作るまでの流れ。</p>
+
+    <div class="step-row">
+      <span class="step-no mono">01</span>
+      <p>ペンシルモードでキャンバスをスワイプし、四角を作る</p>
+    </div>
+    <div class="step-row">
+      <span class="step-no mono">02</span>
+      <p>四角をダブルタップして、売り場の名前を入力する</p>
+    </div>
+    <div class="step-row">
+      <span class="step-no mono">03</span>
+      <p>長押し(PCは右クリック)で、向きや重なり順を整える</p>
+    </div>
+    <div class="step-row">
+      <span class="step-no mono">04</span>
+      <p>設定パネルでグリッドの間隔を好みに調整する</p>
+    </div>
+    <div class="step-row">
+      <span class="step-no mono">05</span>
+      <p>保存メニューからPNG画像、またはJSONデータとして書き出す</p>
+    </div>
+  </div>
+</section>
+
+<section class="spec">
+  <div class="wrap">
+    <h2>動作環境</h2>
+    <dl class="spec-sheet">
+      <div class="spec-row"><dt>対応環境</dt><dd>モダンブラウザ(Chrome / Safari / Edge など)</dd></div>
+      <div class="spec-row"><dt>インストール</dt><dd>不要(ホーム画面への追加も可能)</dd></div>
+      <div class="spec-row"><dt>オフライン利用</dt><dd>対応(PWA)</dd></div>
+      <div class="spec-row"><dt>データの保存先</dt><dd>端末内に自動保存 + JSON書き出し</dd></div>
+      <div class="spec-row"><dt>グリッド間隔</dt><dd class="mono">12〜80px</dd></div>
+    </dl>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-links">
+      <a href="./index.html">アプリを開く</a>
+      <a href="../index.html">アプリ一覧へ戻る</a>
+    </div>
+    <div class="credit">店内マップエディタ / 個人開発プロジェクト</div>
+  </div>
+</footer>
+
+</body>
+</html>
