@@ -107,7 +107,17 @@
   <button class="popup-close" data-close="rect-context-menu">閉じる</button>
 </div>
 
+<!-- キャンバスの右クリック/長押しメニュー(四角のない場所) -->
+<div id="canvas-context-menu" class="popup context-menu hidden">
+  <button id="ctx-canvas-rotate-right" class="popup-btn">キャンバスを右に90度回転</button>
+  <button id="ctx-canvas-rotate-left" class="popup-btn">キャンバスを左に90度回転</button>
+  <button class="popup-close" data-close="canvas-context-menu">閉じる</button>
+</div>
+
 <div id="hint" class="hint"></div>
+
+<!-- 回転アニメーション中に入力をブロックする全画面オーバーレイ -->
+<div id="rotation-lock" class="hidden"></div>
 
 <script src="app.js"></script>
 </body>

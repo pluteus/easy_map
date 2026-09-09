@@ -20,6 +20,9 @@ const state = {
 
 let selection = new Set();   // 選択中の四角のID集合(通常モードでも0〜1個で利用)
 
+let rectRotAnim = null;      // 四角の回転アニメーション中の一時的な描画状態
+let rotationAnimActive = false; // 回転アニメーション中は入力をブロックする
+
 /* ---------------------------------------------------------
    編集モード (hand / pencil / select)
 --------------------------------------------------------- */
@@ -375,10 +378,14 @@ function drawGrid() {
 function drawRect(r) {
   const sel = isSelected(r.id);
   const groupSel = sel && (isSelectMode || selection.size > 1);
-  const center = rectCenter(r);
+  const anim = (rectRotAnim && rectRotAnim.id === r.id) ? rectRotAnim : null;
+  const effRotation = anim ? anim.currentRotation : r.rotation;
+  const center = anim
+    ? { x: anim.currentX + r.w / 2, y: anim.currentY + r.h / 2 }
+    : rectCenter(r);
   ctx.save();
   ctx.translate(center.x, center.y);
-  ctx.rotate((r.rotation * Math.PI) / 180);
+  ctx.rotate((effRotation * Math.PI) / 180);
 
   // 本体
   ctx.fillStyle = groupSel ? "rgba(43,108,246,0.14)" : "#ffffff";
@@ -391,7 +398,8 @@ function drawRect(r) {
 
   ctx.restore();
 
-  if (sel && !groupSel) drawHandles(r);
+  // アニメーション中はハンドルの位置がずれて見えるため非表示にする
+  if (sel && !groupSel && !anim) drawHandles(r);
 }
 
 function drawHandles(r) {
@@ -608,18 +616,26 @@ function onPointerDown(e) {
 }
 
 function startSingleDrag(x, y) {
+  const hit = hitTest(x, y);
+
   if (editMode === "hand") {
     dragMode = "pan";
     dragData = { startScreenX: x, startScreenY: y, startOffsetX: state.offsetX, startOffsetY: state.offsetY };
+    if (hit.type === "create") {
+      startCanvasLongPress(x, y);
+    } else {
+      cancelLongPress();
+    }
     draw();
     return;
   }
 
-  const hit = hitTest(x, y);
   const now = Date.now();
 
   if (hit.type === "move") {
     startLongPress(hit.rect, x, y);
+  } else if (hit.type === "create") {
+    startCanvasLongPress(x, y);
   } else {
     cancelLongPress();
   }
@@ -1002,7 +1018,9 @@ function isOverlayOpen() {
          !document.getElementById("save-menu").classList.contains("hidden") ||
          !document.getElementById("settings-panel").classList.contains("hidden") ||
          !rectContextMenu.classList.contains("hidden") ||
-         !document.getElementById("update-dialog").classList.contains("hidden");
+         !document.getElementById("canvas-context-menu").classList.contains("hidden") ||
+         !document.getElementById("update-dialog").classList.contains("hidden") ||
+         rotationAnimActive;
 }
 
 function openTextEditor(rect) {
@@ -1034,6 +1052,98 @@ document.getElementById("text-edit-delete").addEventListener("click", () => {
 });
 
 /* ---------------------------------------------------------
+   回転アニメーション
+   四角の回転・キャンバスの回転を、値の即時変更ではなく
+   短いアニメーションを挟んで行うことで、どちらが/どちらに
+   回転したのかを視覚的に分かりやすくする。アニメーション中は
+   全画面を覆う #rotation-lock で入力をブロックする。
+--------------------------------------------------------- */
+const rotationLock = document.getElementById("rotation-lock");
+const ROTATION_ANIM_MS = 260;
+
+function lockForRotation() {
+  rotationAnimActive = true;
+  if (rotationLock) rotationLock.classList.remove("hidden");
+}
+function unlockAfterRotation() {
+  rotationAnimActive = false;
+  if (rotationLock) rotationLock.classList.add("hidden");
+}
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// 四角を90度単位で回転させるアニメーション。delta は +90 か -90。
+function animateRectRotation(rect, delta) {
+  if (rotationAnimActive) return;
+  const fromRotation = rect.rotation;
+  const toRotation = ((fromRotation + delta) % 360 + 360) % 360;
+  const fromX = rect.x, fromY = rect.y;
+  const preview = { ...rect, rotation: toRotation };
+  snapPositionForRotation(preview, rectCenter(rect));
+  const toX = preview.x, toY = preview.y;
+
+  lockForRotation();
+  const startTime = performance.now();
+  rectRotAnim = { id: rect.id, currentRotation: fromRotation, currentX: fromX, currentY: fromY };
+
+  function step(now) {
+    const t = Math.min(1, (now - startTime) / ROTATION_ANIM_MS);
+    const e = easeInOutCubic(t);
+    rectRotAnim.currentRotation = fromRotation + delta * e;
+    rectRotAnim.currentX = fromX + (toX - fromX) * e;
+    rectRotAnim.currentY = fromY + (toY - fromY) * e;
+    draw();
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      rect.rotation = toRotation;
+      rect.x = toX;
+      rect.y = toY;
+      rectRotAnim = null;
+      unlockAfterRotation();
+      draw();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+// キャンバス全体の表示を90度単位で回転させるアニメーション。delta は +90 か -90。
+// 画面中心が指しているワールド座標を回転の軸として固定する。
+function animateCanvasRotation(delta) {
+  if (rotationAnimActive) return;
+  const fromRotation = state.viewRotation;
+  const toRotation = ((fromRotation + delta) % 360 + 360) % 360;
+  const c = screenCenter();
+  const pivotWorld = screenToWorld(c.x, c.y);
+
+  lockForRotation();
+  const startTime = performance.now();
+
+  function applyRotation(rotation) {
+    state.viewRotation = rotation;
+    const pre = rotateScreenPoint(c.x, c.y, -rotation);
+    state.offsetX = pre.x - pivotWorld.x * state.scale;
+    state.offsetY = pre.y - pivotWorld.y * state.scale;
+  }
+
+  function step(now) {
+    const t = Math.min(1, (now - startTime) / ROTATION_ANIM_MS);
+    const e = easeInOutCubic(t);
+    applyRotation(fromRotation + delta * e);
+    draw();
+    if (t < 1) {
+      requestAnimationFrame(step);
+    } else {
+      applyRotation(toRotation);
+      unlockAfterRotation();
+      draw();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+/* ---------------------------------------------------------
    四角の右クリック/長押しメニュー
    (右へ回転 / 左へ回転 / 最前面に移動 / 最背面に移動)
 --------------------------------------------------------- */
@@ -1059,25 +1169,19 @@ function closeRectContextMenu() {
 
 document.getElementById("ctx-rotate-right").addEventListener("click", () => {
   const r = getRect(contextMenuRectId);
+  closeRectContextMenu();
   if (r) {
     pushHistory();
-    const c = rectCenter(r);
-    r.rotation = ((r.rotation + 90) % 360 + 360) % 360;
-    snapPositionForRotation(r, c);
-    draw();
+    animateRectRotation(r, 90);
   }
-  closeRectContextMenu();
 });
 document.getElementById("ctx-rotate-left").addEventListener("click", () => {
   const r = getRect(contextMenuRectId);
+  closeRectContextMenu();
   if (r) {
     pushHistory();
-    const c = rectCenter(r);
-    r.rotation = ((r.rotation - 90) % 360 + 360) % 360;
-    snapPositionForRotation(r, c);
-    draw();
+    animateRectRotation(r, -90);
   }
-  closeRectContextMenu();
 });
 document.getElementById("ctx-bring-front").addEventListener("click", () => {
   const idx = state.rects.findIndex(r => r.id === contextMenuRectId);
@@ -1100,6 +1204,36 @@ document.getElementById("ctx-send-back").addEventListener("click", () => {
   closeRectContextMenu();
 });
 
+/* ---------------------------------------------------------
+   キャンバスの右クリック/長押しメニュー(四角のない場所)
+   (キャンバスを右に90度回転 / 左に90度回転)
+--------------------------------------------------------- */
+const canvasContextMenu = document.getElementById("canvas-context-menu");
+
+function openCanvasContextMenu(screenX, screenY) {
+  canvasContextMenu.classList.remove("hidden");
+  const margin = 8;
+  const menuRect = canvasContextMenu.getBoundingClientRect();
+  let left = Math.min(screenX, window.innerWidth - menuRect.width - margin);
+  let top = Math.min(screenY, window.innerHeight - menuRect.height - margin);
+  left = Math.max(margin, left);
+  top = Math.max(margin, top);
+  canvasContextMenu.style.left = left + "px";
+  canvasContextMenu.style.top = top + "px";
+}
+function closeCanvasContextMenu() {
+  canvasContextMenu.classList.add("hidden");
+}
+
+document.getElementById("ctx-canvas-rotate-right").addEventListener("click", () => {
+  closeCanvasContextMenu();
+  animateCanvasRotation(90);
+});
+document.getElementById("ctx-canvas-rotate-left").addEventListener("click", () => {
+  closeCanvasContextMenu();
+  animateCanvasRotation(-90);
+});
+
 // 長押し検出(タッチ/ペン想定。マウスは contextmenu イベント側で処理)
 let longPressTimer = null;
 let longPressStart = null; // {x,y,rect}
@@ -1119,6 +1253,19 @@ function startLongPress(rect, x, y) {
     openRectContextMenu(rect, x, y);
   }, LONG_PRESS_MS);
 }
+// 四角のない場所(空白部分)の長押し→キャンバス回転メニュー
+function startCanvasLongPress(x, y) {
+  cancelLongPress();
+  longPressStart = { x, y };
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    longPressStart = null;
+    dragMode = null;
+    draw();
+    if (navigator.vibrate) navigator.vibrate(12);
+    openCanvasContextMenu(x, y);
+  }, LONG_PRESS_MS);
+}
 function cancelLongPress() {
   if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
   longPressStart = null;
@@ -1135,6 +1282,10 @@ canvas.addEventListener("contextmenu", (e) => {
     selectOnly(hit.rect.id);
     draw();
     openRectContextMenu(hit.rect, e.clientX, e.clientY);
+  } else if (hit.type === "create") {
+    dragMode = null;
+    draw();
+    openCanvasContextMenu(e.clientX, e.clientY);
   }
 });
 

@@ -187,3 +187,11 @@ html, body {
   text-align: center;
 }
 .hint.show { opacity: 1; }
+
+#rotation-lock {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: transparent;
+  touch-action: none;
+}
