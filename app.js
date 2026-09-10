@@ -1408,14 +1408,16 @@ function closeCanvasContextMenu() {
 function pasteClipboardRects(target) {
   if (!clipboardRects.length || !target) return;
   pushHistory();
+  const g = state.gridSize;
+  const anchor = { x: snap(target.x, g), y: snap(target.y, g) };
   let minX = Infinity, minY = Infinity;
   clipboardRects.forEach(r => { minX = Math.min(minX, r.x); minY = Math.min(minY, r.y); });
   const newIds = [];
   clipboardRects.forEach(r => {
     const nr = {
       id: uid(),
-      x: target.x + (r.x - minX),
-      y: target.y + (r.y - minY),
+      x: anchor.x + (r.x - minX),
+      y: anchor.y + (r.y - minY),
       w: r.w, h: r.h, rotation: r.rotation, text: r.text,
     };
     state.rects.push(nr);
@@ -1438,6 +1440,16 @@ document.getElementById("ctx-canvas-paste").addEventListener("click", () => {
   const target = canvasContextWorld;
   closeCanvasContextMenu();
   pasteClipboardRects(target);
+});
+
+// サブメニュー(四角メニュー/キャンバスメニュー)以外の場所をタップしたら閉じる
+document.addEventListener("pointerdown", (e) => {
+  if (!rectContextMenu.classList.contains("hidden") && !rectContextMenu.contains(e.target)) {
+    closeRectContextMenu();
+  }
+  if (!canvasContextMenu.classList.contains("hidden") && !canvasContextMenu.contains(e.target)) {
+    closeCanvasContextMenu();
+  }
 });
 
 // 長押し検出(タッチ/ペン想定。マウスは contextmenu イベント側で処理)

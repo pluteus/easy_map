@@ -130,7 +130,6 @@ html, body {
   padding: 10px 12px;
   font-size: 13.5px;
 }
-.context-menu .popup-close { margin-top: 2px; }
 
 .mode-menu {
   width: min(230px, 74vw);
