@@ -469,7 +469,7 @@ function drawRect(r) {
   ctx.fillRect(-r.w / 2, -r.h / 2, r.w, r.h);
   ctx.strokeRect(-r.w / 2, -r.h / 2, r.w, r.h);
 
-  if (r.text) drawText(r);
+  if (r.text) drawText(r, effRotation);
 
   ctx.restore();
 
@@ -571,27 +571,36 @@ function layoutVertical(text, w, h, maxFont) {
   }
 }
 
-function drawText(r) {
-  const isHorizontal = r.w >= r.h; // 正方形・横長 -> 横書き / 縦長 -> 縦書き
+function drawText(r, effRotation) {
+  // 表示上の総回転(キャンバス全体の回転 + 四角自体の回転)。
+  // 90度単位でしか回転しないため、常に 0/90/180/270 のいずれかになる。
+  const total = ((state.viewRotation + effRotation) % 360 + 360) % 360;
+  const swapped = total === 90 || total === 270; // 見た目の縦横が入れ替わる
+  const extraRotation = total === 90 ? -90 : total === 270 ? 90 : 0; // 文字を画面基準で正しい向きに戻す補正
+  const boxW = swapped ? r.h : r.w; // 見た目上の幅
+  const boxH = swapped ? r.w : r.h; // 見た目上の高さ
+  const isHorizontal = boxW >= boxH; // 正方形・横長(見た目) -> 横書き / 縦長(見た目) -> 縦書き
   const maxFont = Math.max(MIN_FONT, Math.min(MAX_FONT, Math.floor(Math.min(r.w, r.h) / 3)));
 
+  ctx.save();
+  if (extraRotation) ctx.rotate((extraRotation * Math.PI) / 180);
   ctx.fillStyle = "#1a1a1a";
   ctx.textBaseline = "middle";
 
   if (isHorizontal) {
-    const layout = layoutHorizontal(r.text, r.w, r.h, maxFont);
-    if (!layout) return;
+    const layout = layoutHorizontal(r.text, boxW, boxH, maxFont);
+    if (!layout) { ctx.restore(); return; }
     ctx.font = `${layout.fontSize}px sans-serif`;
     ctx.textAlign = "center";
     const totalH = layout.lines.length * layout.lineHeight;
     let y = -totalH / 2 + layout.lineHeight / 2;
     for (const line of layout.lines) {
-      ctx.fillText(line, 0, y, r.w - PAD * 2);
+      ctx.fillText(line, 0, y, boxW - PAD * 2);
       y += layout.lineHeight;
     }
   } else {
-    const layout = layoutVertical(r.text, r.w, r.h, maxFont);
-    if (!layout) return;
+    const layout = layoutVertical(r.text, boxW, boxH, maxFont);
+    if (!layout) { ctx.restore(); return; }
     ctx.font = `${layout.fontSize}px sans-serif`;
     ctx.textAlign = "center";
     const totalW = layout.columns.length * layout.colWidth;
@@ -606,6 +615,7 @@ function drawText(r) {
       x -= layout.colWidth;
     }
   }
+  ctx.restore();
 }
 
 /* ---------------------------------------------------------
@@ -1705,23 +1715,30 @@ function drawRectForExport(r, octx) {
   octx.restore();
 }
 function drawTextOn(targetCtx, r) {
-  // 一時的にレイアウト計算用ctxを差し替え(measureTextのため)
-  const globalCtxBackup = window.__measureCtx;
-  const isHorizontal = r.w >= r.h;
+  // 書き出し画像はキャンバスの表示回転を含まない(常に真上から見た正規の向き)ため、
+  // 四角自体の回転(r.rotation)のみを考慮する。
+  const total = ((r.rotation % 360) + 360) % 360;
+  const swapped = total === 90 || total === 270;
+  const extraRotation = total === 90 ? -90 : total === 270 ? 90 : 0;
+  const boxW = swapped ? r.h : r.w;
+  const boxH = swapped ? r.w : r.h;
+  const isHorizontal = boxW >= boxH;
   const maxFont = Math.max(MIN_FONT, Math.min(MAX_FONT, Math.floor(Math.min(r.w, r.h) / 3)));
+  targetCtx.save();
+  if (extraRotation) targetCtx.rotate((extraRotation * Math.PI) / 180);
   targetCtx.fillStyle = "#1a1a1a";
   targetCtx.textBaseline = "middle";
   if (isHorizontal) {
-    const layout = layoutHorizontalWith(targetCtx, r.text, r.w, r.h, maxFont);
-    if (!layout) return;
+    const layout = layoutHorizontalWith(targetCtx, r.text, boxW, boxH, maxFont);
+    if (!layout) { targetCtx.restore(); return; }
     targetCtx.font = `${layout.fontSize}px sans-serif`;
     targetCtx.textAlign = "center";
     const totalH = layout.lines.length * layout.lineHeight;
     let y = -totalH / 2 + layout.lineHeight / 2;
-    for (const line of layout.lines) { targetCtx.fillText(line, 0, y, r.w - PAD * 2); y += layout.lineHeight; }
+    for (const line of layout.lines) { targetCtx.fillText(line, 0, y, boxW - PAD * 2); y += layout.lineHeight; }
   } else {
-    const layout = layoutVerticalWith(targetCtx, r.text, r.w, r.h, maxFont);
-    if (!layout) return;
+    const layout = layoutVerticalWith(targetCtx, r.text, boxW, boxH, maxFont);
+    if (!layout) { targetCtx.restore(); return; }
     targetCtx.font = `${layout.fontSize}px sans-serif`;
     targetCtx.textAlign = "center";
     const totalW = layout.columns.length * layout.colWidth;
@@ -1732,6 +1749,7 @@ function drawTextOn(targetCtx, r) {
       x -= layout.colWidth;
     }
   }
+  targetCtx.restore();
 }
 function layoutHorizontalWith(c, text, w, h, maxFont) {
   const paras = splitParagraphs(text);
