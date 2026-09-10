@@ -19,6 +19,7 @@ const state = {
 };
 
 let selection = new Set();   // 選択中の四角のID集合(通常モードでも0〜1個で利用)
+let clipboardRects = [];     // コピー/切り取りした四角のデータ(貼り付け用、id は含まない)
 
 let rectRotAnim = null;      // 四角の回転アニメーション中の一時的な描画状態(Map<id, {currentRotation,currentX,currentY}>)
 let rotationAnimActive = false; // 回転アニメーション中は入力をブロックする
@@ -272,6 +273,19 @@ function selectionBounds(rects) {
 }
 
 function selectionBoundsPadding() { return state.gridSize * 0.15; }
+
+// 範囲選択モードで複数選択中の四角を囲む破線エリアの「内側の空白部分」に
+// 指定したスクリーン座標が含まれるかどうかを判定する(コピー/切り取りメニュー表示用)
+function selectionBoundsContainsScreenPoint(x, y) {
+  if (!isSelectMode || selection.size < 2) return false;
+  const selRects = state.rects.filter(r => isSelected(r.id));
+  const bounds = selectionBounds(selRects);
+  if (!bounds) return false;
+  const pad = selectionBoundsPadding();
+  const w = screenToWorld(x, y);
+  return w.x >= bounds.minX - pad && w.x <= bounds.maxX + pad &&
+         w.y >= bounds.minY - pad && w.y <= bounds.maxY + pad;
+}
 
 // 2本の指の位置(画面座標)がどちらも外接矩形の範囲内(タッチ許容込み)にあるか
 function bothPointsInBounds(pA, pB, bounds) {
@@ -706,7 +720,11 @@ function startSingleDrag(x, y) {
   if (hit.type === "move") {
     startLongPress(hit.rect, x, y);
   } else if (hit.type === "create") {
-    startCanvasLongPress(x, y);
+    if (isSelectMode && selectionBoundsContainsScreenPoint(x, y)) {
+      startSelectionLongPress(x, y);
+    } else {
+      startCanvasLongPress(x, y);
+    }
   } else {
     cancelLongPress();
   }
@@ -1265,13 +1283,26 @@ function animateCanvasRotation(delta) {
 
 /* ---------------------------------------------------------
    四角の右クリック/長押しメニュー
-   (右へ回転 / 左へ回転 / 最前面に移動 / 最背面に移動)
+   (右へ回転 / 左へ回転 / 最前面に移動 / 最背面に移動 / コピー / 切り取り)
+   複数選択中に、選択エリア内(四角の上以外も含む)で長押し/右クリックした
+   場合は rect が null で開かれ、コピー/切り取りのみ選択全体に対して行える。
 --------------------------------------------------------- */
 const rectContextMenu = document.getElementById("rect-context-menu");
-let contextMenuRectId = null;
+let contextMenuRectId = null;   // 個別操作(回転/前面/背面)の対象。単一四角クリック時のみ設定
+let contextMenuGroupIds = [];   // コピー/切り取りの対象。複数選択中なら選択全体、それ以外は単一四角
+
+const CONTEXT_MENU_SINGLE_ONLY_IDS = ["ctx-rotate-right", "ctx-rotate-left", "ctx-bring-front", "ctx-send-back"];
 
 function openRectContextMenu(rect, screenX, screenY) {
-  contextMenuRectId = rect.id;
+  contextMenuRectId = rect ? rect.id : null;
+  contextMenuGroupIds = rect
+    ? (selection.has(rect.id) && selection.size > 1 ? [...selection] : [rect.id])
+    : [...selection];
+
+  CONTEXT_MENU_SINGLE_ONLY_IDS.forEach(id => {
+    document.getElementById(id).classList.toggle("hidden", !contextMenuRectId);
+  });
+
   rectContextMenu.classList.remove("hidden");
   const margin = 8;
   const menuRect = rectContextMenu.getBoundingClientRect();
@@ -1285,6 +1316,14 @@ function openRectContextMenu(rect, screenX, screenY) {
 function closeRectContextMenu() {
   rectContextMenu.classList.add("hidden");
   contextMenuRectId = null;
+  contextMenuGroupIds = [];
+}
+
+function copyRectsToClipboard(ids) {
+  const rects = ids.map(id => getRect(id)).filter(Boolean);
+  if (!rects.length) return 0;
+  clipboardRects = rects.map(r => ({ x: r.x, y: r.y, w: r.w, h: r.h, rotation: r.rotation, text: r.text }));
+  return clipboardRects.length;
 }
 
 document.getElementById("ctx-rotate-right").addEventListener("click", () => {
@@ -1323,14 +1362,35 @@ document.getElementById("ctx-send-back").addEventListener("click", () => {
   }
   closeRectContextMenu();
 });
+document.getElementById("ctx-copy").addEventListener("click", () => {
+  const ids = contextMenuGroupIds;
+  closeRectContextMenu();
+  const n = copyRectsToClipboard(ids);
+  if (n) showHint(n > 1 ? `${n}個の四角をコピーしました` : "四角をコピーしました", 1600);
+});
+document.getElementById("ctx-cut").addEventListener("click", () => {
+  const ids = contextMenuGroupIds;
+  closeRectContextMenu();
+  const n = copyRectsToClipboard(ids);
+  if (!n) return;
+  pushHistory();
+  state.rects = state.rects.filter(r => !ids.includes(r.id));
+  clearSelection();
+  draw();
+  showHint(n > 1 ? `${n}個の四角を切り取りました` : "四角を切り取りました", 1600);
+});
 
 /* ---------------------------------------------------------
    キャンバスの右クリック/長押しメニュー(四角のない場所)
-   (キャンバスを右に90度回転 / 左に90度回転)
+   (キャンバスを右に90度回転 / 左に90度回転 / 貼り付け)
 --------------------------------------------------------- */
 const canvasContextMenu = document.getElementById("canvas-context-menu");
+let canvasContextWorld = null; // 貼り付け先(メニューを開いた位置のワールド座標)
 
 function openCanvasContextMenu(screenX, screenY) {
+  canvasContextWorld = screenToWorld(screenX, screenY);
+  document.getElementById("ctx-canvas-paste").classList.toggle("hidden", clipboardRects.length === 0);
+
   canvasContextMenu.classList.remove("hidden");
   const margin = 8;
   const menuRect = canvasContextMenu.getBoundingClientRect();
@@ -1345,6 +1405,27 @@ function closeCanvasContextMenu() {
   canvasContextMenu.classList.add("hidden");
 }
 
+function pasteClipboardRects(target) {
+  if (!clipboardRects.length || !target) return;
+  pushHistory();
+  let minX = Infinity, minY = Infinity;
+  clipboardRects.forEach(r => { minX = Math.min(minX, r.x); minY = Math.min(minY, r.y); });
+  const newIds = [];
+  clipboardRects.forEach(r => {
+    const nr = {
+      id: uid(),
+      x: target.x + (r.x - minX),
+      y: target.y + (r.y - minY),
+      w: r.w, h: r.h, rotation: r.rotation, text: r.text,
+    };
+    state.rects.push(nr);
+    newIds.push(nr.id);
+  });
+  selection = new Set(newIds);
+  draw();
+  showHint(newIds.length > 1 ? `${newIds.length}個の四角を貼り付けました` : "四角を貼り付けました", 1600);
+}
+
 document.getElementById("ctx-canvas-rotate-right").addEventListener("click", () => {
   closeCanvasContextMenu();
   animateCanvasRotation(90);
@@ -1352,6 +1433,11 @@ document.getElementById("ctx-canvas-rotate-right").addEventListener("click", () 
 document.getElementById("ctx-canvas-rotate-left").addEventListener("click", () => {
   closeCanvasContextMenu();
   animateCanvasRotation(-90);
+});
+document.getElementById("ctx-canvas-paste").addEventListener("click", () => {
+  const target = canvasContextWorld;
+  closeCanvasContextMenu();
+  pasteClipboardRects(target);
 });
 
 // 長押し検出(タッチ/ペン想定。マウスは contextmenu イベント側で処理)
@@ -1367,10 +1453,27 @@ function startLongPress(rect, x, y) {
     longPressTimer = null;
     longPressStart = null;
     dragMode = null;
-    selectOnly(rect.id);
+    // 既に複数選択されている四角の上での長押しは選択を維持し、
+    // コピー/切り取りを選択全体に対して行えるようにする
+    if (!(selection.has(rect.id) && selection.size > 1)) {
+      selectOnly(rect.id);
+    }
     draw();
     if (navigator.vibrate) navigator.vibrate(12);
     openRectContextMenu(rect, x, y);
+  }, LONG_PRESS_MS);
+}
+// 複数選択エリア内(四角の上以外の空白部分)の長押し→選択全体のコピー/切り取りメニュー
+function startSelectionLongPress(x, y) {
+  cancelLongPress();
+  longPressStart = { x, y };
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    longPressStart = null;
+    dragMode = null;
+    draw();
+    if (navigator.vibrate) navigator.vibrate(12);
+    openRectContextMenu(null, x, y);
   }, LONG_PRESS_MS);
 }
 // 四角のない場所(空白部分)の長押し→キャンバス回転メニュー
@@ -1399,13 +1502,19 @@ canvas.addEventListener("contextmenu", (e) => {
   const hit = hitTest(e.clientX, e.clientY);
   if (hit.type === "move") {
     dragMode = null;
-    selectOnly(hit.rect.id);
+    if (!(selection.has(hit.rect.id) && selection.size > 1)) {
+      selectOnly(hit.rect.id);
+    }
     draw();
     openRectContextMenu(hit.rect, e.clientX, e.clientY);
   } else if (hit.type === "create") {
     dragMode = null;
     draw();
-    openCanvasContextMenu(e.clientX, e.clientY);
+    if (isSelectMode && selectionBoundsContainsScreenPoint(e.clientX, e.clientY)) {
+      openRectContextMenu(null, e.clientX, e.clientY);
+    } else {
+      openCanvasContextMenu(e.clientX, e.clientY);
+    }
   }
 });
 
