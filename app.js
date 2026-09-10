@@ -1621,15 +1621,32 @@ document.querySelectorAll("[data-close]").forEach(btn => {
 });
 
 document.getElementById("save-json").addEventListener("click", () => {
-  const data = { type: "storemap", version: 1, gridSize: state.gridSize, rects: state.rects };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  downloadBlob(blob, `storemap-${timestamp()}.json`);
+  downloadBlob(jsonBlob(), `storemap-${timestamp()}.json`);
   closeSaveMenu();
 });
 
 document.getElementById("save-png").addEventListener("click", () => {
   exportPNG();
   closeSaveMenu();
+});
+
+document.getElementById("share-png").addEventListener("click", () => {
+  closeSaveMenu();
+  exportPNG(blob => {
+    if (!shareFile(blob, `storemap-${timestamp()}.png`, "image/png")) {
+      showHint("この端末/ブラウザは共有に対応していません");
+      downloadBlob(blob, `storemap-${timestamp()}.png`);
+    }
+  });
+});
+
+document.getElementById("share-json").addEventListener("click", () => {
+  closeSaveMenu();
+  const blob = jsonBlob();
+  if (!shareFile(blob, `storemap-${timestamp()}.json`, "application/json")) {
+    showHint("この端末/ブラウザは共有に対応していません");
+    downloadBlob(blob, `storemap-${timestamp()}.json`);
+  }
 });
 
 document.getElementById("load-json").addEventListener("click", () => {
@@ -1683,7 +1700,7 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-function exportPNG() {
+function exportPNG(onBlob) {
   const g = state.gridSize;
   const margin = g * 2;
   let minX = 0, minY = 0, maxX = g * 10, maxY = g * 10;
@@ -1725,7 +1742,24 @@ function exportPNG() {
   });
   octx.restore();
 
-  off.toBlob(blob => downloadBlob(blob, `storemap-${timestamp()}.png`), "image/png");
+  off.toBlob(blob => (onBlob || (b => downloadBlob(b, `storemap-${timestamp()}.png`)))(blob), "image/png");
+}
+
+function jsonBlob() {
+  const data = { type: "storemap", version: 1, gridSize: state.gridSize, rects: state.rects };
+  return new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+}
+
+// Web Share API (Level 2) でファイルを共有する。
+// 対応していない場合は false を返し、呼び出し側でダウンロードにフォールバックする。
+function shareFile(blob, filename, mimeType) {
+  if (!navigator.share || !navigator.canShare) return false;
+  const file = new File([blob], filename, { type: mimeType });
+  if (!navigator.canShare({ files: [file] })) return false;
+  navigator.share({ files: [file] }).catch(err => {
+    if (err && err.name !== "AbortError") showHint("共有に失敗しました");
+  });
+  return true;
 }
 
 // drawRect relies on closures over ctx & state.scale; provide export-safe variant
