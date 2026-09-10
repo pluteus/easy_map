@@ -130,6 +130,7 @@ html, body {
   padding: 10px 12px;
   font-size: 13.5px;
 }
+#save-menu.context-menu { width: min(260px, 78vw); }
 
 .mode-menu {
   width: min(230px, 74vw);

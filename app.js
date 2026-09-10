@@ -576,7 +576,8 @@ function drawText(r, effRotation) {
   // 90度単位でしか回転しないため、常に 0/90/180/270 のいずれかになる。
   const total = ((state.viewRotation + effRotation) % 360 + 360) % 360;
   const swapped = total === 90 || total === 270; // 見た目の縦横が入れ替わる
-  const extraRotation = total === 90 ? -90 : total === 270 ? 90 : 0; // 文字を画面基準で正しい向きに戻す補正
+  // 文字を常に画面基準で正しい(逆さまにならない)向きに戻す補正
+  const extraRotation = total === 90 ? -90 : total === 180 ? 180 : total === 270 ? 90 : 0;
   const boxW = swapped ? r.h : r.w; // 見た目上の幅
   const boxH = swapped ? r.w : r.h; // 見た目上の高さ
   const isHorizontal = boxW >= boxH; // 正方形・横長(見た目) -> 横書き / 縦長(見た目) -> 縦書き
@@ -1571,17 +1572,48 @@ document.getElementById("btn-select-all").addEventListener("click", () => {
 });
 
 /* ---------------------------------------------------------
-   保存 / 読み込み
+   保存 / 読み込み(保存ボタンの下にドロップダウン表示)
 --------------------------------------------------------- */
 const saveMenu = document.getElementById("save-menu");
 const settingsPanel = document.getElementById("settings-panel");
 
-document.getElementById("btn-save").addEventListener("click", () => {
+function isSaveMenuOpen() {
+  return !saveMenu.classList.contains("hidden");
+}
+function closeSaveMenu() {
+  saveMenu.classList.add("hidden");
+}
+function openSaveMenu() {
   saveMenu.classList.remove("hidden");
+  const btn = document.getElementById("btn-save");
+  const margin = 8;
+  const btnRect = btn.getBoundingClientRect();
+  const menuRect = saveMenu.getBoundingClientRect();
+  let left = Math.min(btnRect.left, window.innerWidth - menuRect.width - margin);
+  left = Math.max(margin, left);
+  let top = Math.min(btnRect.bottom + 6, window.innerHeight - menuRect.height - margin);
+  top = Math.max(margin, top);
+  saveMenu.style.left = left + "px";
+  saveMenu.style.top = top + "px";
+}
+function toggleSaveMenu() {
+  if (isSaveMenuOpen()) {
+    closeSaveMenu();
+  } else {
+    openSaveMenu();
+  }
+}
+
+document.getElementById("btn-save").addEventListener("click", toggleSaveMenu);
+
+// メニュー以外の場所をタップ/クリックしたら閉じる
+document.addEventListener("pointerdown", (e) => {
+  if (!isSaveMenuOpen()) return;
+  if (saveMenu.contains(e.target)) return;
+  if (e.target.closest && e.target.closest("#btn-save")) return;
+  closeSaveMenu();
 });
-document.getElementById("btn-load").addEventListener("click", () => {
-  document.getElementById("file-input").click();
-});
+
 document.querySelectorAll("[data-close]").forEach(btn => {
   btn.addEventListener("click", () => {
     document.getElementById(btn.dataset.close).classList.add("hidden");
@@ -1592,12 +1624,17 @@ document.getElementById("save-json").addEventListener("click", () => {
   const data = { type: "storemap", version: 1, gridSize: state.gridSize, rects: state.rects };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   downloadBlob(blob, `storemap-${timestamp()}.json`);
-  saveMenu.classList.add("hidden");
+  closeSaveMenu();
 });
 
 document.getElementById("save-png").addEventListener("click", () => {
   exportPNG();
-  saveMenu.classList.add("hidden");
+  closeSaveMenu();
+});
+
+document.getElementById("load-json").addEventListener("click", () => {
+  closeSaveMenu();
+  document.getElementById("file-input").click();
 });
 
 document.getElementById("file-input").addEventListener("change", (e) => {
@@ -1719,7 +1756,7 @@ function drawTextOn(targetCtx, r) {
   // 四角自体の回転(r.rotation)のみを考慮する。
   const total = ((r.rotation % 360) + 360) % 360;
   const swapped = total === 90 || total === 270;
-  const extraRotation = total === 90 ? -90 : total === 270 ? 90 : 0;
+  const extraRotation = total === 90 ? -90 : total === 180 ? 180 : total === 270 ? 90 : 0;
   const boxW = swapped ? r.h : r.w;
   const boxH = swapped ? r.w : r.h;
   const isHorizontal = boxW >= boxH;
