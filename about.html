@@ -99,8 +99,24 @@
     line-height:1.9;
     color:var(--ink-soft);
     max-width:32em;
-    margin:0 0 40px;
+    margin:0 0 32px;
   }
+
+  .cta-btn{
+    display:inline-block;
+    background:var(--accent);
+    color:#ffffff;
+    font-family:"Zen Kaku Gothic New", -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:0.02em;
+    padding:14px 30px;
+    border-radius:6px;
+    text-decoration:none;
+    transition:opacity 0.2s, transform 0.2s;
+  }
+  .cta-btn:hover{ opacity:0.88; transform:translateY(-1px); }
+  .hero .cta-btn{ margin-bottom:40px; }
 
   .shot-frame{
     background:var(--paper);
@@ -205,6 +221,28 @@
   .spec-row dt{ color:var(--ink-soft); }
   .spec-row dd{ margin:0; text-align:right; }
 
+  /* ---------- bottom CTA ---------- */
+  .cta-section{
+    background:var(--wash);
+    text-align:center;
+  }
+  .cta-box{
+    background:var(--paper);
+    border:1px solid var(--ink);
+    border-radius:10px;
+    padding:48px 32px;
+  }
+  .cta-box h2{
+    font-size:22px;
+    font-weight:700;
+    margin:0 0 10px;
+  }
+  .cta-box p{
+    font-size:14.5px;
+    color:var(--ink-soft);
+    margin:0 0 26px;
+  }
+
   /* ---------- footer ---------- */
   footer{
     background:var(--ink);
@@ -262,6 +300,8 @@
       売り場をひとつずつ四角で並べていくだけの、ブラウザで動く店内レイアウト帳です。
       インストール不要でそのまま開いて描き始められ、オフラインでも使えます。
     </p>
+
+    <a class="cta-btn" href="./index.html">アプリを開く →</a>
 
     <div class="shot-frame">
       <img src="screenshot.jpg" alt="店内マップエディタの画面。乳製品売り場・野菜売り場・納豆の3つの四角がグリッド上に配置されている。">
@@ -414,6 +454,16 @@
       <div class="spec-row"><dt>データの保存先</dt><dd>端末内に自動保存 + JSON書き出し</dd></div>
       <div class="spec-row"><dt>グリッド間隔</dt><dd class="mono">12〜80px</dd></div>
     </dl>
+  </div>
+</section>
+
+<section class="cta-section">
+  <div class="wrap">
+    <div class="cta-box">
+      <h2>さっそく試してみる</h2>
+      <p>インストール不要。ブラウザですぐに使い始められます。</p>
+      <a class="cta-btn" href="./index.html">店内マップエディタを開く →</a>
+    </div>
   </div>
 </section>
 
