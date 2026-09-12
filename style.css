@@ -13,6 +13,9 @@ html, body {
   display: block;
   touch-action: none;
   background: #ffffff;
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .toolbar {

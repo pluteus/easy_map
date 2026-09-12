@@ -5,6 +5,8 @@
    状態管理
 --------------------------------------------------------- */
 const canvas = document.getElementById("canvas");
+canvas.draggable = false;
+canvas.addEventListener("dragstart", (e) => e.preventDefault());
 const ctx = canvas.getContext("2d");
 let DPR = Math.max(1, window.devicePixelRatio || 1);
 
