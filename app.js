@@ -2226,6 +2226,112 @@ async function init() {
   }
   initServiceWorker();
 }
+/* ---------------------------------------------------------
+   キーボードショートカット
+--------------------------------------------------------- */
+function keyboardCopySelection() {
+  if (!selection.size) { showHint("四角が選択されていません"); return; }
+  const ids = [...selection];
+  const n = copyRectsToClipboard(ids);
+  if (n) showHint(n > 1 ? `${n}個の四角をコピーしました` : "四角をコピーしました", 1600);
+}
+
+function keyboardCutSelection() {
+  if (!selection.size) { showHint("四角が選択されていません"); return; }
+  const ids = [...selection];
+  const n = copyRectsToClipboard(ids);
+  if (!n) return;
+  pushHistory();
+  state.rects = state.rects.filter(r => !ids.includes(r.id));
+  clearSelection();
+  draw();
+  showHint(n > 1 ? `${n}個の四角を切り取りました` : "四角を切り取りました", 1600);
+}
+
+function keyboardPaste() {
+  if (!clipboardRects.length) { showHint("貼り付けるデータがありません"); return; }
+  // 画面中央のワールド座標を基準に貼り付ける(グリッドへのスナップは pasteClipboardRects 内で行う)
+  const c = screenCenter();
+  const target = screenToWorld(c.x, c.y);
+  pasteClipboardRects(target);
+}
+
+// 選択中の四角をグリッド1マス分移動する(回転による見た目のズレも補正)
+function moveSelectionByGrid(dx, dy) {
+  if (!selection.size) return;
+  const g = state.gridSize;
+  pushHistory();
+  for (const id of selection) {
+    const r = getRect(id);
+    if (!r) continue;
+    snapRectPosition(r, r.x + dx * g, r.y + dy * g);
+  }
+  draw();
+}
+
+document.addEventListener("keydown", (e) => {
+  const t = e.target;
+  const isEditableTarget = t && (
+    t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable
+  );
+  if (isEditableTarget) return; // テキスト入力中は既定の動作(ブラウザ標準)に任せる
+
+  const mod = e.ctrlKey || e.metaKey; // Windows: Ctrl / Mac: Cmd
+
+  if (mod && !e.shiftKey && !e.altKey) {
+    const key = e.key.toLowerCase();
+    switch (key) {
+      case "c":
+        e.preventDefault();
+        keyboardCopySelection();
+        return;
+      case "x":
+        e.preventDefault();
+        keyboardCutSelection();
+        return;
+      case "v":
+        e.preventDefault();
+        keyboardPaste();
+        return;
+      case "a":
+        e.preventDefault();
+        document.getElementById("btn-select-all").click();
+        return;
+      case "z":
+        e.preventDefault();
+        document.getElementById("btn-undo").click();
+        return;
+      case "y":
+        e.preventDefault();
+        document.getElementById("btn-redo").click();
+        return;
+      case "f":
+        e.preventDefault();
+        openSearchMenu();
+        return;
+      case "s":
+        e.preventDefault();
+        document.getElementById("save-json").click();
+        return;
+    }
+    return;
+  }
+
+  if (e.key === "Backspace" || e.key === "Delete") {
+    e.preventDefault();
+    document.getElementById("btn-delete").click();
+    return;
+  }
+
+  if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight") {
+    if (!selection.size) return;
+    e.preventDefault();
+    const dx = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+    const dy = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
+    moveSelectionByGrid(dx, dy);
+  }
+});
+
 init();
 
 })();
