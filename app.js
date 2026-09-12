@@ -597,6 +597,12 @@ function splitParagraphs(text) {
   return text.split("\n");
 }
 
+// 行頭が # の行はコメントとして扱い、表示からは除外する
+// (検索対象には元の文字列をそのまま使うため、ここでは表示用の文字列だけを作る)
+function visibleText(text) {
+  return text.split("\n").filter(line => !line.startsWith("#")).join("\n");
+}
+
 function layoutHorizontal(text, w, h, maxFont) {
   const paras = splitParagraphs(text);
   for (let fontSize = maxFont; fontSize >= MIN_FONT; fontSize--) {
@@ -657,6 +663,8 @@ function drawText(r, effRotation) {
   const boxH = swapped ? r.w : r.h; // 見た目上の高さ
   const isHorizontal = boxW >= boxH; // 正方形・横長(見た目) -> 横書き / 縦長(見た目) -> 縦書き
   const maxFont = Math.max(MIN_FONT, Math.min(MAX_FONT, Math.floor(Math.min(r.w, r.h) / 3)));
+  const text = visibleText(r.text);
+  if (!text) return;
 
   ctx.save();
   if (extraRotation) ctx.rotate((extraRotation * Math.PI) / 180);
@@ -664,7 +672,7 @@ function drawText(r, effRotation) {
   ctx.textBaseline = "middle";
 
   if (isHorizontal) {
-    const layout = layoutHorizontal(r.text, boxW, boxH, maxFont);
+    const layout = layoutHorizontal(text, boxW, boxH, maxFont);
     if (!layout) { ctx.restore(); return; }
     ctx.font = `${layout.fontSize}px sans-serif`;
     ctx.textAlign = "center";
@@ -675,7 +683,7 @@ function drawText(r, effRotation) {
       y += layout.lineHeight;
     }
   } else {
-    const layout = layoutVertical(r.text, boxW, boxH, maxFont);
+    const layout = layoutVertical(text, boxW, boxH, maxFont);
     if (!layout) { ctx.restore(); return; }
     ctx.font = `${layout.fontSize}px sans-serif`;
     ctx.textAlign = "center";
@@ -1871,12 +1879,14 @@ function drawTextOn(targetCtx, r) {
   const boxH = swapped ? r.w : r.h;
   const isHorizontal = boxW >= boxH;
   const maxFont = Math.max(MIN_FONT, Math.min(MAX_FONT, Math.floor(Math.min(r.w, r.h) / 3)));
+  const text = visibleText(r.text);
+  if (!text) return;
   targetCtx.save();
   if (extraRotation) targetCtx.rotate((extraRotation * Math.PI) / 180);
   targetCtx.fillStyle = "#1a1a1a";
   targetCtx.textBaseline = "middle";
   if (isHorizontal) {
-    const layout = layoutHorizontalWith(targetCtx, r.text, boxW, boxH, maxFont);
+    const layout = layoutHorizontalWith(targetCtx, text, boxW, boxH, maxFont);
     if (!layout) { targetCtx.restore(); return; }
     targetCtx.font = `${layout.fontSize}px sans-serif`;
     targetCtx.textAlign = "center";
@@ -1884,7 +1894,7 @@ function drawTextOn(targetCtx, r) {
     let y = -totalH / 2 + layout.lineHeight / 2;
     for (const line of layout.lines) { targetCtx.fillText(line, 0, y, boxW - PAD * 2); y += layout.lineHeight; }
   } else {
-    const layout = layoutVerticalWith(targetCtx, r.text, boxW, boxH, maxFont);
+    const layout = layoutVerticalWith(targetCtx, text, boxW, boxH, maxFont);
     if (!layout) { targetCtx.restore(); return; }
     targetCtx.font = `${layout.fontSize}px sans-serif`;
     targetCtx.textAlign = "center";
@@ -2121,10 +2131,30 @@ function initServiceWorker() {
   });
 }
 
+// 自動保存データが無い場合に読み込む既定のマップデータ
+async function loadDefaultMap() {
+  try {
+    const res = await fetch("default-map.json");
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (!Array.isArray(data.rects)) return false;
+    state.rects = data.rects.map(r => ({
+      id: uid(),
+      x: r.x, y: r.y, w: r.w, h: r.h,
+      rotation: r.rotation || 0,
+      text: r.text || "",
+    }));
+    if (data.gridSize) state.gridSize = data.gridSize;
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
 /* ---------------------------------------------------------
    初期化
 --------------------------------------------------------- */
-function init() {
+async function init() {
   const restored = loadFromLocalStorage();
   resizeCanvas();
   layoutToolbars();
@@ -2134,7 +2164,15 @@ function init() {
   if (restored && state.rects.length) {
     showHint("前回の編集内容を復元しました", 2000);
   } else {
-    showHint("キャンバスをスワイプして四角を配置", 2400);
+    const loadedDefault = await loadDefaultMap();
+    if (loadedDefault && state.rects.length) {
+      syncGridUI();
+      clearSelection();
+      fitView();
+      showHint("既定のマップを読み込みました", 2000);
+    } else {
+      showHint("キャンバスをスワイプして四角を配置", 2400);
+    }
   }
   initServiceWorker();
 }

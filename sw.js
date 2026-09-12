@@ -1,4 +1,4 @@
-const CACHE_NAME = "storemap-cache-v8";
+const CACHE_NAME = "storemap-cache-v9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -6,6 +6,7 @@ const ASSETS = [
   "./app.js",
   "./about.html",
   "./manifest.json",
+  "./default-map.json",
   "./icon-192.png",
   "./icon-512.png",
 ];
