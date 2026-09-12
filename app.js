@@ -184,8 +184,10 @@ function runSearch() {
       if (r.text && r.text.includes(q)) highlightedIds.add(r.id);
     }
     showHint(highlightedIds.size ? `${highlightedIds.size}件見つかりました` : "見つかりませんでした");
+    fitAllVisible();
+  } else {
+    draw();
   }
-  draw();
 }
 
 document.getElementById("btn-search").addEventListener("click", toggleSearchMenu);
@@ -265,6 +267,23 @@ const HANDLE_R = 22;       // 角ハンドルのヒット半径(画面px)
 const MIN_SCALE = 0.25, MAX_SCALE = 4;
 
 function uid() { return state.nextId++; }
+
+// 90度回転で見た目の幅・高さが入れ替わる四角を移動する際、見た目の外接矩形が
+// グリッドに沿うように(回転直後のスナップ状態を保ったまま)位置を計算する。
+// desiredX, desiredY は回転前基準の左上(r.x, r.y)としての希望位置。
+function snapRectPosition(r, desiredX, desiredY) {
+  const g = state.gridSize;
+  const rot = ((r.rotation % 360) + 360) % 360;
+  const swapped = (rot === 90 || rot === 270);
+  const visualW = swapped ? r.h : r.w;
+  const visualH = swapped ? r.w : r.h;
+  const offX = (r.w - visualW) / 2; // 見た目の左上 = (r.x + offX, r.y + offY)
+  const offY = (r.h - visualH) / 2;
+  const snappedVisualLeft = snap(desiredX + offX, g);
+  const snappedVisualTop = snap(desiredY + offY, g);
+  r.x = snappedVisualLeft - offX;
+  r.y = snappedVisualTop - offY;
+}
 
 function snap(v, grid) { return Math.round(v / grid) * grid; }
 
@@ -962,9 +981,7 @@ function onPointerMove(e) {
     const r = dragData.rect;
     const w = screenToWorld(e.clientX, e.clientY);
     const dx = w.x - dragData.grabWorld.x, dy = w.y - dragData.grabWorld.y;
-    const g = state.gridSize;
-    r.x = snap(dragData.startX + dx, g);
-    r.y = snap(dragData.startY + dy, g);
+    snapRectPosition(r, dragData.startX + dx, dragData.startY + dy);
     draw();
   } else if (dragMode === "resize") {
     doResize(e.clientX, e.clientY);
@@ -1652,7 +1669,7 @@ document.getElementById("btn-select-all").addEventListener("click", () => {
   if (editMode !== "select") setMode("select");
   selection = new Set(state.rects.map(r => r.id));
   showHint("全ての四角を選択しました", 1600);
-  draw();
+  fitAllVisible();
 });
 
 /* ---------------------------------------------------------
@@ -2008,6 +2025,37 @@ function fitView() {
   state.scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(scaleX, scaleY)));
   state.offsetX = -minX * state.scale;
   state.offsetY = -minY * state.scale;
+  draw();
+}
+
+// fitView() と異なり、現在の表示回転(viewRotation)はそのままに、
+// マップ全体(すべての四角)が画面に収まるようズーム/パン位置だけを
+// 調整する(全選択・検索実行時に使用)。
+function fitAllVisible() {
+  if (!state.rects.length) return;
+  const margin = state.gridSize * 3;
+  const minX = Math.min(...state.rects.map(r => r.x)) - margin;
+  const minY = Math.min(...state.rects.map(r => r.y)) - margin;
+  const maxX = Math.max(...state.rects.map(r => r.x + r.w)) + margin;
+  const maxY = Math.max(...state.rects.map(r => r.y + r.h)) + margin;
+  const contentW = Math.max(1, maxX - minX), contentH = Math.max(1, maxY - minY);
+
+  const winW = window.innerWidth, winH = window.innerHeight;
+  const rot = ((state.viewRotation % 360) + 360) % 360;
+  const swapped = (rot === 90 || rot === 270);
+  const availW = swapped ? winH : winW;
+  const availH = swapped ? winW : winH;
+
+  const scaleX = availW / contentW, scaleY = availH / contentH;
+  const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(scaleX, scaleY)));
+
+  // 回転はスクリーン中心を軸に行われるため、コンテンツの中心を画面中心に
+  // 合わせれば、回転角に関わらず中央に収まる
+  const worldCenter = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  const c = screenCenter();
+  state.scale = newScale;
+  state.offsetX = c.x - newScale * worldCenter.x;
+  state.offsetY = c.y - newScale * worldCenter.y;
   draw();
 }
 
