@@ -132,6 +132,28 @@ html, body {
 }
 #save-menu.context-menu { width: min(260px, 78vw); }
 
+.search-menu.context-menu { width: min(260px, 80vw); }
+.search-row { display: flex; align-items: center; gap: 8px; }
+#search-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 14px;
+  font-family: inherit;
+}
+.search-go-btn {
+  flex: 0 0 auto;
+  width: 38px; height: 38px;
+  border: none;
+  border-radius: 8px;
+  background: #1a1a1a;
+  display: flex; align-items: center; justify-content: center;
+}
+.search-go-btn svg { width: 18px; height: 18px; stroke: #fff; fill: none; }
+.search-go-btn:active { background: #333; }
+
 .mode-menu {
   width: min(230px, 74vw);
   padding: 8px;

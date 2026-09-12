@@ -29,6 +29,9 @@
   <button id="btn-redo" class="tbtn" title="やり直す" disabled>
     <svg viewBox="0 0 24 24"><path d="M17 7H9a5 5 0 0 0 0 10h3" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 3l5 4-5 4" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button>
+  <button id="btn-search" class="tbtn" title="検索">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" fill="none" stroke-width="1.8" stroke-linecap="round"/></svg>
+  </button>
   <button id="btn-select-all" class="tbtn" title="全選択">
     <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke-width="1.7"/><path d="M8 12l3 3 5-6" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button>
@@ -47,6 +50,16 @@
   <button id="btn-fullscreen" class="tbtn" title="フルスクリーン">
     <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke-width="1.8"/></svg>
   </button>
+</div>
+
+<!-- 検索メニュー(検索ボタンの下に表示) -->
+<div id="search-menu" class="popup context-menu search-menu hidden">
+  <div class="search-row">
+    <input type="text" id="search-input" placeholder="文字を含む四角を検索" enterkeyhint="search">
+    <button id="search-go" class="search-go-btn" title="検索">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" fill="none" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+  </div>
 </div>
 
 <!-- モード切替メニュー(モードボタンの下に表示) -->

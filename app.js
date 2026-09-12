@@ -133,6 +133,79 @@ document.addEventListener("pointerdown", (e) => {
   closeModeMenu();
 });
 
+/* ---------------------------------------------------------
+   検索メニュー(検索ボタン下にテキスト入力を表示)
+   文字列を含む四角の背景を黄色でハイライトする。
+   再度検索すると、前回のハイライトは一旦元の色に戻ってから
+   新しい検索結果が改めてハイライトされる。
+--------------------------------------------------------- */
+const searchMenu = document.getElementById("search-menu");
+const searchInput = document.getElementById("search-input");
+let highlightedIds = new Set(); // 黄色にハイライト中の四角のID
+
+function isSearchMenuOpen() {
+  return !searchMenu.classList.contains("hidden");
+}
+
+function closeSearchMenu() {
+  searchMenu.classList.add("hidden");
+}
+
+function openSearchMenu() {
+  searchMenu.classList.remove("hidden");
+  const btnSearch = document.getElementById("btn-search");
+  const margin = 8;
+  const btnRect = btnSearch.getBoundingClientRect();
+  const menuRect = searchMenu.getBoundingClientRect();
+  let left = Math.min(btnRect.left, window.innerWidth - menuRect.width - margin);
+  left = Math.max(margin, left);
+  let top = Math.min(btnRect.bottom + 6, window.innerHeight - menuRect.height - margin);
+  top = Math.max(margin, top);
+  searchMenu.style.left = left + "px";
+  searchMenu.style.top = top + "px";
+  searchInput.focus();
+  searchInput.select();
+}
+
+function toggleSearchMenu() {
+  if (isSearchMenuOpen()) {
+    closeSearchMenu();
+  } else {
+    openSearchMenu();
+  }
+}
+
+function runSearch() {
+  // 前回検索でハイライトした四角を、まず元の色に戻す
+  highlightedIds.clear();
+  const q = searchInput.value.trim();
+  if (q) {
+    for (const r of state.rects) {
+      if (r.text && r.text.includes(q)) highlightedIds.add(r.id);
+    }
+    showHint(highlightedIds.size ? `${highlightedIds.size}件見つかりました` : "見つかりませんでした");
+  }
+  draw();
+}
+
+document.getElementById("btn-search").addEventListener("click", toggleSearchMenu);
+document.getElementById("search-go").addEventListener("click", runSearch);
+searchInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    runSearch();
+  }
+});
+
+// 検索メニュー表示中に、メニューと検索ボタン以外の場所をタップしたら閉じる
+// (ハイライト自体はメニューを閉じても保持される)
+document.addEventListener("pointerdown", (e) => {
+  if (!isSearchMenuOpen()) return;
+  if (searchMenu.contains(e.target)) return;
+  if (e.target.closest && e.target.closest("#btn-search")) return;
+  closeSearchMenu();
+});
+
 function selectOnly(id) { selection = new Set(id == null ? [] : [id]); }
 function clearSelection() { selection = new Set(); }
 function toggleSelectionId(id) {
@@ -463,7 +536,9 @@ function drawRect(r) {
   ctx.rotate((effRotation * Math.PI) / 180);
 
   // 本体
-  ctx.fillStyle = groupSel ? "rgba(43,108,246,0.14)" : "#ffffff";
+  ctx.fillStyle = highlightedIds.has(r.id)
+    ? "#ffe600"
+    : (groupSel ? "rgba(43,108,246,0.14)" : "#ffffff");
   ctx.strokeStyle = sel ? "#2b6cf6" : "#1a1a1a";
   ctx.lineWidth = (sel ? 3 : 2) / state.scale;
   ctx.fillRect(-r.w / 2, -r.h / 2, r.w, r.h);
@@ -1117,6 +1192,7 @@ function isOverlayOpen() {
          !document.getElementById("canvas-context-menu").classList.contains("hidden") ||
          !document.getElementById("update-dialog").classList.contains("hidden") ||
          !document.getElementById("mode-menu").classList.contains("hidden") ||
+         !document.getElementById("search-menu").classList.contains("hidden") ||
          rotationAnimActive;
 }
 
