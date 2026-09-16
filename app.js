@@ -30,7 +30,7 @@ let rotationAnimActive = false; // 回転アニメーション中は入力をブ
    編集モード (hand / pencil / select)
 --------------------------------------------------------- */
 const MODE_ORDER = ["hand", "pencil", "layout", "select"];
-let editMode = "pencil";
+let editMode = "hand";
 let isSelectMode = false;    // editMode === "select" と同期させておく(既存コード互換用)
 
 const MODE_ICONS = {
@@ -1776,7 +1776,7 @@ document.getElementById("file-input").addEventListener("change", (e) => {
         state.gridSize = data.gridSize;
         syncGridUI();
       }
-      clearSelection();
+      setMode("hand");
       fitView();
       showHint("読み込みました");
     } catch (err) {
@@ -2083,6 +2083,7 @@ function saveToLocalStorage() {
       offsetX: state.offsetX,
       offsetY: state.offsetY,
       viewRotation: state.viewRotation,
+      editMode: editMode,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (err) { /* 保存先が使えない場合は無視 */ }
@@ -2102,6 +2103,10 @@ function loadFromLocalStorage() {
     if (typeof data.offsetX === "number") state.offsetX = data.offsetX;
     if (typeof data.offsetY === "number") state.offsetY = data.offsetY;
     if (typeof data.viewRotation === "number") state.viewRotation = ((data.viewRotation % 360) + 360) % 360;
+    if (MODE_ORDER.includes(data.editMode)) {
+      editMode = data.editMode;
+      isSelectMode = (editMode === "select");
+    }
     return true;
   } catch (err) {
     return false;
@@ -2217,7 +2222,7 @@ async function init() {
     const loadedDefault = await loadDefaultMap();
     if (loadedDefault && state.rects.length) {
       syncGridUI();
-      clearSelection();
+      setMode("hand");
       fitView();
       showHint("既定のマップを読み込みました", 2000);
     } else {
