@@ -60,6 +60,8 @@
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke-width="1.8"/><path d="M21 21l-4.3-4.3" fill="none" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
   </div>
+  <label class="search-opt"><input type="checkbox" id="search-ignore-case" checked> 大文字・小文字を区別しない</label>
+  <label class="search-opt"><input type="checkbox" id="search-ignore-kana" checked> ひらがな・カタカナを区別しない</label>
 </div>
 
 <!-- モード切替メニュー(モードボタンの下に表示) -->
@@ -116,6 +118,7 @@
 
 <!-- 四角の右クリック/長押しメニュー -->
 <div id="rect-context-menu" class="popup context-menu hidden">
+  <button id="ctx-edit-text" class="popup-btn">文字を追加する</button>
   <button id="ctx-rotate-right" class="popup-btn">右へ回転</button>
   <button id="ctx-rotate-left" class="popup-btn">左へ回転</button>
   <button id="ctx-bring-front" class="popup-btn">最前面に移動</button>
@@ -136,6 +139,6 @@
 <!-- 回転アニメーション中に入力をブロックする全画面オーバーレイ -->
 <div id="rotation-lock" class="hidden"></div>
 
-<script src="app.js"></script>
+<script src="sw.js"></script>
 </body>
 </html>
