@@ -7,7 +7,7 @@
 --------------------------------------------------------- */
 const IS_SERVICE_WORKER = typeof ServiceWorkerGlobalScope !== "undefined" && self instanceof ServiceWorkerGlobalScope;
 function runServiceWorker() {
-  const CACHE_NAME = "storemap-cache-v11";
+  const CACHE_NAME = "storemap-cache-v12";
   const ASSETS = [
     "./",
     "./index.html",
@@ -244,9 +244,14 @@ function toggleSearchMenu() {
 
 const searchIgnoreCase = document.getElementById("search-ignore-case");
 const searchIgnoreKana = document.getElementById("search-ignore-kana");
+const searchIgnoreWidth = document.getElementById("search-ignore-width");
 
-// 検索用に文字列を正規化する(オプションに応じて大小文字・ひらがな/カタカナを統一)
+// 検索用に文字列を正規化する(オプションに応じて全角/半角・大小文字・ひらがな/カタカナを統一)
 function normalizeForSearch(s) {
+  if (searchIgnoreWidth.checked) {
+    // 全角英数記号→半角、半角カナ→全角カナ(濁点も結合)、全角スペース→半角
+    s = s.normalize("NFKC");
+  }
   if (searchIgnoreCase.checked) s = s.toLowerCase();
   if (searchIgnoreKana.checked) {
     // カタカナ(ァ-ヶ)をひらがなへ
